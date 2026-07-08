@@ -6,6 +6,7 @@ from app import models
 from app.auth import create_access_token, get_current_user, hash_password, verify_password
 from app.dashboard import router as dashboard_router
 from app.database import Base, engine, get_db
+from app.feedback import router as feedback_router
 from app.preferences import get_onboarding_completed, router as preferences_router
 from app.schemas import LoginRequest, SignupRequest, TokenResponse, UserResponse
 
@@ -23,6 +24,7 @@ app.add_middleware(
 
 app.include_router(preferences_router)
 app.include_router(dashboard_router)
+app.include_router(feedback_router)
 
 
 @app.get("/")

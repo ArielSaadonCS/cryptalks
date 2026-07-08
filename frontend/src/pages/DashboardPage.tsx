@@ -1,7 +1,23 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ApiError, clearToken, DashboardData, getDashboardToday, getPreferences, Preferences } from "../api";
+import {
+  ApiError,
+  clearToken,
+  DashboardData,
+  getDashboardToday,
+  getMyFeedback,
+  getPreferences,
+  Preferences,
+  SectionType,
+  submitFeedback,
+  Vote,
+} from "../api";
 import DashboardCard from "../components/DashboardCard";
+import FeedbackButtons from "../components/FeedbackButtons";
+
+function feedbackKey(sectionType: SectionType, itemId: string): string {
+  return `${sectionType}:${itemId}`;
+}
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -10,14 +26,24 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const [feedback, setFeedback] = useState<Record<string, Vote>>({});
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState<Record<string, boolean>>({});
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([getPreferences(), getDashboardToday()])
-      .then(([prefs, dashboardData]) => {
+    Promise.all([getPreferences(), getDashboardToday(), getMyFeedback()])
+      .then(([prefs, dashboardData, feedbackItems]) => {
         if (cancelled) return;
         setPreferences(prefs);
         setDashboard(dashboardData);
+
+        const map: Record<string, Vote> = {};
+        for (const item of feedbackItems) {
+          map[feedbackKey(item.sectionType, item.itemId)] = item.vote;
+        }
+        setFeedback(map);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -35,6 +61,21 @@ export default function DashboardPage() {
       cancelled = true;
     };
   }, [navigate]);
+
+  async function handleVote(sectionType: SectionType, itemId: string, vote: Vote) {
+    const key = feedbackKey(sectionType, itemId);
+    setFeedbackError(null);
+    setFeedbackSubmitting((prev) => ({ ...prev, [key]: true }));
+
+    try {
+      await submitFeedback({ sectionType, itemId, vote });
+      setFeedback((prev) => ({ ...prev, [key]: vote }));
+    } catch (err) {
+      setFeedbackError(err instanceof ApiError ? err.message : "Could not save your feedback. Please try again.");
+    } finally {
+      setFeedbackSubmitting((prev) => ({ ...prev, [key]: false }));
+    }
+  }
 
   function handleLogout() {
     clearToken();
@@ -80,20 +121,38 @@ export default function DashboardPage() {
         trading recommendations.
       </p>
 
+      <p className="feedback-note">
+        Your feedback helps Cryptalks learn which content is useful to you. It does not directly change your saved
+        onboarding preferences.
+      </p>
+
+      {feedbackError && <div className="error-message">{feedbackError}</div>}
+
       {dashboard && (
         <div className="dashboard-grid">
           <DashboardCard title="Market News">
             <ul className="news-list">
-              {dashboard.marketNews.map((item) => (
-                <li key={item.id} className="news-item">
-                  <h3>{item.title}</h3>
-                  <p>{item.summary}</p>
-                  <div className="news-meta">
-                    <span>{item.source}</span>
-                    {item.relatedAssets.length > 0 && <span>{item.relatedAssets.join(", ")}</span>}
-                  </div>
-                </li>
-              ))}
+              {dashboard.marketNews.map((item) => {
+                const key = feedbackKey("MARKET_NEWS", item.id);
+                return (
+                  <li key={item.id} className="news-item">
+                    <h3>{item.title}</h3>
+                    <p>{item.summary}</p>
+                    <div className="news-meta">
+                      <span>{item.source}</span>
+                      {item.relatedAssets.length > 0 && <span>{item.relatedAssets.join(", ")}</span>}
+                    </div>
+                    <FeedbackButtons
+                      sectionType="MARKET_NEWS"
+                      itemId={item.id}
+                      prompt="Was this useful?"
+                      vote={feedback[key] ?? null}
+                      submitting={!!feedbackSubmitting[key]}
+                      onVote={handleVote}
+                    />
+                  </li>
+                );
+              })}
             </ul>
           </DashboardCard>
 
@@ -104,21 +163,34 @@ export default function DashboardPage() {
                   <th>Asset</th>
                   <th>Price</th>
                   <th>24h</th>
+                  <th>Feedback</th>
                 </tr>
               </thead>
               <tbody>
-                {dashboard.coinPrices.map((coin) => (
-                  <tr key={coin.id}>
-                    <td>
-                      <strong>{coin.symbol}</strong> <span className="coin-name">{coin.name}</span>
-                    </td>
-                    <td>${coin.priceUsd.toLocaleString()}</td>
-                    <td className={coin.change24h >= 0 ? "positive" : "negative"}>
-                      {coin.change24h >= 0 ? "+" : ""}
-                      {coin.change24h}%
-                    </td>
-                  </tr>
-                ))}
+                {dashboard.coinPrices.map((coin) => {
+                  const key = feedbackKey("COIN_PRICE", coin.id);
+                  return (
+                    <tr key={coin.id}>
+                      <td>
+                        <strong>{coin.symbol}</strong> <span className="coin-name">{coin.name}</span>
+                      </td>
+                      <td>${coin.priceUsd.toLocaleString()}</td>
+                      <td className={coin.change24h >= 0 ? "positive" : "negative"}>
+                        {coin.change24h >= 0 ? "+" : ""}
+                        {coin.change24h}%
+                      </td>
+                      <td>
+                        <FeedbackButtons
+                          sectionType="COIN_PRICE"
+                          itemId={coin.id}
+                          vote={feedback[key] ?? null}
+                          submitting={!!feedbackSubmitting[key]}
+                          onVote={handleVote}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </DashboardCard>
@@ -126,11 +198,27 @@ export default function DashboardPage() {
           <DashboardCard title="AI Insight of the Day" className="insight-card">
             <h3>{dashboard.aiInsight.title}</h3>
             <p>{dashboard.aiInsight.content}</p>
+            <FeedbackButtons
+              sectionType="AI_INSIGHT"
+              itemId={dashboard.aiInsight.id}
+              prompt="Was this insight useful?"
+              vote={feedback[feedbackKey("AI_INSIGHT", dashboard.aiInsight.id)] ?? null}
+              submitting={!!feedbackSubmitting[feedbackKey("AI_INSIGHT", dashboard.aiInsight.id)]}
+              onVote={handleVote}
+            />
           </DashboardCard>
 
           <DashboardCard title="Fun Crypto Meme">
             <p className="meme-title">{dashboard.meme.title}</p>
             <img className="meme-image" src={dashboard.meme.imageUrl} alt={dashboard.meme.title} />
+            <FeedbackButtons
+              sectionType="MEME"
+              itemId={dashboard.meme.id}
+              prompt="Did this match your crypto mood?"
+              vote={feedback[feedbackKey("MEME", dashboard.meme.id)] ?? null}
+              submitting={!!feedbackSubmitting[feedbackKey("MEME", dashboard.meme.id)]}
+              onVote={handleVote}
+            />
           </DashboardCard>
         </div>
       )}

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -36,3 +36,15 @@ class UserPreferences(Base):
     )
 
     user = relationship("User", back_populates="preferences")
+
+
+class Feedback(Base):
+    __tablename__ = "feedback"
+    __table_args__ = (UniqueConstraint("user_id", "section_type", "item_id", name="uq_feedback_user_section_item"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    section_type = Column(String, nullable=False)
+    item_id = Column(String, nullable=False)
+    vote = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

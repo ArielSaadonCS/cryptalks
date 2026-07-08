@@ -16,9 +16,12 @@ This repository currently implements:
   dashboard that summarizes the saved preferences.
 - **Phase 5** – dashboard shell: a personalized daily briefing built from backend
   mock/static data (market news, coin prices, an AI insight, and a meme).
+- **Phase 6** – feedback storage: thumbs up/down voting on dashboard content, stored
+  in PostgreSQL per user, separate from onboarding preferences.
 
 Later modules (real news/price feeds via CoinGecko/CryptoPanic, a real AI model via
-OpenRouter, and user feedback) are not part of this phase.
+OpenRouter, and using feedback to actually tune recommendations) are not part of
+this phase.
 
 ## Project structure
 
@@ -34,7 +37,8 @@ cryptalks/
 │   │   ├── auth.py        # Password hashing, JWT creation/validation
 │   │   ├── preferences.py # Preferences router (GET/PUT /preferences/me)
 │   │   ├── dashboard.py   # Dashboard router (GET /dashboard/today)
-│   │   └── integrations.py # Mock/static market data + personalization logic
+│   │   ├── integrations.py # Mock/static market data + personalization logic
+│   │   └── feedback.py    # Feedback router (POST /feedback, GET /feedback/me)
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── frontend/
@@ -45,7 +49,8 @@ cryptalks/
 │   │   ├── styles.css            # Global styles
 │   │   ├── components/
 │   │   │   ├── ProtectedRoute.tsx
-│   │   │   └── DashboardCard.tsx
+│   │   │   ├── DashboardCard.tsx
+│   │   │   └── FeedbackButtons.tsx
 │   │   └── pages/
 │   │       ├── LoginPage.tsx
 │   │       ├── SignupPage.tsx
@@ -99,6 +104,8 @@ Never commit real secrets.
 | GET    | `/preferences/me`| Yes (Bearer)   | Returns the current user's preferences    |
 | PUT    | `/preferences/me`| Yes (Bearer)   | Creates or updates preferences, completes onboarding |
 | GET    | `/dashboard/today`| Yes (Bearer)  | Returns the personalized daily briefing (mock data) |
+| POST   | `/feedback`      | Yes (Bearer)   | Records/updates a thumbs up/down vote on a dashboard item |
+| GET    | `/feedback/me`   | Yes (Bearer)   | Returns all of the current user's feedback votes |
 
 `GET /auth/me` reports `onboardingCompleted: true` once the user has saved
 preferences via `PUT /preferences/me`. `GET /dashboard/today` returns
@@ -187,6 +194,30 @@ curl http://localhost:8000/dashboard/today \
   -H "Authorization: Bearer <access_token>"
 ```
 
+### Submit feedback
+
+```bash
+curl -X POST http://localhost:8000/feedback \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sectionType": "AI_INSIGHT",
+    "itemId": "insight-today",
+    "vote": "UP"
+  }'
+```
+
+Voting again with the same `sectionType` + `itemId` updates the existing vote
+instead of creating a new row (enforced by a unique constraint on
+`user_id, section_type, item_id`).
+
+### Get your feedback history
+
+```bash
+curl http://localhost:8000/feedback/me \
+  -H "Authorization: Bearer <access_token>"
+```
+
 ## Example end-to-end flow (API)
 
 1. **Signup** – `POST /auth/signup` with name, email, password → returns an access token.
@@ -217,6 +248,29 @@ preferences:
   sell, or expect a specific market outcome.
 - **Meme** — one of a small fixed set of placeholder memes, chosen deterministically
   per user.
+
+## Feedback vs. preferences
+
+Cryptalks tracks two distinct kinds of user data, and this phase keeps them
+strictly separate:
+
+- **Preferences** (`user_preferences` table) — explicit choices made once during
+  onboarding: selected assets, investor type, content types, risk level. These
+  drive what content is generated for the dashboard.
+- **Feedback** (`feedback` table) — implicit, ongoing behavioral data: a thumbs
+  up/down vote per dashboard item, tied to `user_id` + `section_type` + `item_id`.
+  Submitting feedback **never** modifies `user_preferences` or `onboardingCompleted`
+  — it's stored as its own row, independent of the onboarding flow.
+
+This phase does not implement any ranking or ML logic — feedback is stored, not
+acted on. The intent for future phases is that this data could inform
+personalization without requiring the user to redo onboarding, e.g.:
+
+- Sections or items a user consistently upvotes could be prioritized or shown more
+  prominently.
+- Content types a user consistently downvotes could be shown less often.
+- Over time, accumulated votes could train or tune a simple ranking model — this
+  phase only lays the storage groundwork for that, with no training involved yet.
 
 ## Frontend
 
@@ -276,6 +330,21 @@ redirects to `/onboarding` instead of showing an error — this is a defensive
 fallback, since `ProtectedRoute` already blocks `/dashboard` until onboarding is
 complete.
 
+### Feedback (thumbs up/down)
+
+Every dashboard item — each market news card, each coin price row, the AI
+insight, and the meme — has 👍/👎 buttons from the reusable `FeedbackButtons`
+component. On dashboard load, `GET /feedback/me` is fetched alongside the
+briefing and preferences, and used to pre-select any vote the user already
+cast. Clicking a button calls `POST /feedback` for just that item (a per-item
+`submitting` flag disables just that pair of buttons, not the whole page), and
+on success the selected button updates immediately; switching from 👍 to 👎 (or
+back) simply re-submits with the new vote, which the backend upserts in place.
+A failed request shows a clean inline error without losing the rest of the
+dashboard. A short note under the disclaimer explains: "Your feedback helps
+Cryptalks learn which content is useful to you. It does not directly change
+your saved onboarding preferences."
+
 ### Manual test flow
 
 1. Open **http://localhost:5173** — you land on `/login`.
@@ -291,6 +360,12 @@ complete.
    complete (`GET /auth/me` returns `onboardingCompleted: true`), you're redirected
    straight to `/dashboard` without seeing the form again. Manually visiting
    `/onboarding` at this point redirects back to `/dashboard`.
+7. **Vote** 👍 or 👎 on a market news item, a coin price row, the AI insight, and
+   the meme.
+8. **Refresh the page** (`F5`) — the same buttons you clicked are still highlighted,
+   confirming the vote was persisted and reloaded via `GET /feedback/me`.
+9. **Confirm in PostgreSQL** (optional): `docker exec -it cryptalks-db-1 psql -U cryptalks -d cryptalks -c "SELECT * FROM feedback;"`
+   should show one row per item you voted on, tied to your `user_id`.
 
 Backend error handling can also be checked from the UI: logging in with a wrong
 password shows a clean "Invalid email or password" message, signing up with a weak

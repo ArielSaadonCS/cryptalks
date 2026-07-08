@@ -291,6 +291,49 @@ button.secondary:hover:not(:disabled) {
   color: #5b6474;
 }
 
+.feedback-note {
+  margin: 12px 0 0;
+  font-size: 0.78rem;
+  color: #7a8194;
+}
+
+.feedback-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.feedback-prompt {
+  font-size: 0.78rem;
+  color: #7a8194;
+  margin-right: 2px;
+}
+
+.feedback-button {
+  width: auto;
+  padding: 4px 9px;
+  background: #f4f6fb;
+  color: #1a1f36;
+  border: 1px solid #e2e5ed;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.feedback-button:hover:not(:disabled) {
+  background: #e2e5ed;
+}
+
+.feedback-button.selected {
+  background: #4f6df5;
+  border-color: #4f6df5;
+}
+
+.price-table .feedback-buttons {
+  margin-top: 0;
+}
+
 .onboarding-card {
   max-width: 640px;
 }

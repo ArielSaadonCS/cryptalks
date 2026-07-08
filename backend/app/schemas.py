@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
@@ -179,3 +180,46 @@ class DashboardResponse(BaseModel):
     coin_prices: list[CoinPriceItem] = Field(alias="coinPrices")
     ai_insight: AIInsightItem = Field(alias="aiInsight")
     meme: MemeItem
+
+
+ALLOWED_SECTION_TYPES = {"MARKET_NEWS", "COIN_PRICE", "AI_INSIGHT", "MEME"}
+ALLOWED_VOTES = {"UP", "DOWN"}
+
+
+class FeedbackCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    section_type: str = Field(alias="sectionType")
+    item_id: str = Field(alias="itemId")
+    vote: str
+
+    @field_validator("section_type")
+    @classmethod
+    def validate_section_type(cls, value: str) -> str:
+        if value not in ALLOWED_SECTION_TYPES:
+            raise ValueError(f"Invalid sectionType. Allowed: {', '.join(sorted(ALLOWED_SECTION_TYPES))}")
+        return value
+
+    @field_validator("item_id")
+    @classmethod
+    def validate_item_id(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("itemId must not be empty")
+        return value
+
+    @field_validator("vote")
+    @classmethod
+    def validate_vote(cls, value: str) -> str:
+        if value not in ALLOWED_VOTES:
+            raise ValueError(f"Invalid vote. Allowed: {', '.join(sorted(ALLOWED_VOTES))}")
+        return value
+
+
+class FeedbackResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: int
+    section_type: str = Field(alias="sectionType")
+    item_id: str = Field(alias="itemId")
+    vote: str
+    created_at: datetime = Field(alias="createdAt")

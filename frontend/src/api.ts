@@ -64,6 +64,23 @@ export interface DashboardData {
   meme: MemeItem;
 }
 
+export type SectionType = "MARKET_NEWS" | "COIN_PRICE" | "AI_INSIGHT" | "MEME";
+export type Vote = "UP" | "DOWN";
+
+export interface FeedbackInput {
+  sectionType: SectionType;
+  itemId: string;
+  vote: Vote;
+}
+
+export interface Feedback {
+  id: number;
+  sectionType: SectionType;
+  itemId: string;
+  vote: Vote;
+  createdAt: string;
+}
+
 export class ApiError extends Error {
   status: number;
 
@@ -153,4 +170,15 @@ export function savePreferences(preferences: PreferencesInput): Promise<Preferen
 
 export function getDashboardToday(): Promise<DashboardData> {
   return request<DashboardData>("/dashboard/today");
+}
+
+export function submitFeedback(data: FeedbackInput): Promise<Feedback> {
+  return request<Feedback>("/feedback", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function getMyFeedback(): Promise<Feedback[]> {
+  return request<Feedback[]>("/feedback/me");
 }
