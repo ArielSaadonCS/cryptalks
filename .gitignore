@@ -8,3 +8,5 @@ venv/
 .mypy_cache/
 .vscode/
 .idea/
+node_modules/
+dist/

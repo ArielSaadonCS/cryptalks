@@ -4,12 +4,17 @@ Cryptalks is an AI-powered, personalized daily crypto briefing dashboard. It sur
 market context and news tailored to each user's stated interests. **It is not a trading
 prediction app and does not provide financial advice.**
 
-This repository currently implements **Phase 1** (backend foundation: PostgreSQL
-connectivity, JWT-based authentication, password hashing, password policy validation,
-and a protected "current user" endpoint) and **Phase 2** (onboarding preferences:
-storing each user's asset/content preferences and exposing onboarding status). The
-frontend and later modules (dashboard, feedback, external market data) are not part
-of this phase.
+This repository currently implements:
+
+- **Phase 1** – backend foundation: PostgreSQL connectivity, JWT-based authentication,
+  password hashing, password policy validation, and a protected "current user" endpoint.
+- **Phase 2** – onboarding preferences: storing each user's asset/content preferences
+  and exposing onboarding status.
+- **Phase 3** – React frontend foundation: signup/login pages, protected routing,
+  token handling, and placeholder onboarding/dashboard pages.
+
+Later modules (the real onboarding form, the real dashboard, feedback, external market
+data) are not part of this phase.
 
 ## Project structure
 
@@ -26,12 +31,28 @@ cryptalks/
 │   │   └── preferences.py # Preferences router (GET/PUT /preferences/me)
 │   ├── requirements.txt
 │   └── Dockerfile
+├── frontend/
+│   ├── src/
+│   │   ├── main.tsx              # React entry point, router setup
+│   │   ├── App.tsx               # Route definitions
+│   │   ├── api.ts                # Backend API helper (fetch, token storage)
+│   │   ├── styles.css            # Global styles
+│   │   ├── components/
+│   │   │   └── ProtectedRoute.tsx
+│   │   └── pages/
+│   │       ├── LoginPage.tsx
+│   │       ├── SignupPage.tsx
+│   │       ├── OnboardingPage.tsx  # Placeholder for this phase
+│   │       └── DashboardPage.tsx   # Placeholder for this phase
+│   ├── package.json
+│   ├── .env.example
+│   └── Dockerfile
 ├── docker-compose.yml
 ├── .env.example
 └── README.md
 ```
 
-## Running the backend with Docker Compose
+## Running the full app with Docker Compose
 
 Requirements: Docker and Docker Compose.
 
@@ -42,17 +63,23 @@ docker compose up --build
 This starts:
 
 - **db** – a PostgreSQL 16 database
-- **backend** – the FastAPI app, served with uvicorn on http://localhost:8000
+- **backend** – the FastAPI app, served with uvicorn at **http://localhost:8000**
+  (Swagger docs at **http://localhost:8000/docs**)
+- **frontend** – the React/Vite app, served at **http://localhost:5173**
 
-Tables are created automatically on startup. The API docs (Swagger UI) are available at:
+Tables are created automatically on backend startup.
 
-http://localhost:8000/docs
+Both `backend` and `frontend` services in `docker-compose.yml` ship with working
+development defaults (`DATABASE_URL`, `JWT_SECRET_KEY`, `JWT_ALGORITHM`,
+`ACCESS_TOKEN_EXPIRE_MINUTES`, `VITE_API_URL`), so `docker compose up --build` works
+out of the box. For running either service outside Docker:
 
-The `backend` service in `docker-compose.yml` ships with working development defaults
-for `DATABASE_URL`, `JWT_SECRET_KEY`, `JWT_ALGORITHM`, and `ACCESS_TOKEN_EXPIRE_MINUTES`,
-so `docker compose up --build` works out of the box. For running the backend outside
-Docker (e.g. locally with `uvicorn` against your own Postgres instance), copy
-`.env.example` to `backend/.env` and adjust the values — never commit real secrets.
+- Backend: copy `.env.example` to `backend/.env` and adjust the values, then run
+  `uvicorn app.main:app --reload` from `backend/` against your own Postgres instance.
+- Frontend: copy `frontend/.env.example` to `frontend/.env`, then run `npm install`
+  and `npm run dev` from `frontend/`.
+
+Never commit real secrets.
 
 ## Endpoints available in this phase
 
@@ -143,10 +170,51 @@ curl http://localhost:8000/preferences/me \
   -H "Authorization: Bearer <access_token>"
 ```
 
-## Example end-to-end flow
+## Example end-to-end flow (API)
 
 1. **Signup** – `POST /auth/signup` with name, email, password → returns an access token.
 2. **Login** – `POST /auth/login` with email, password → returns an access token.
 3. **Use the token** – pass it as `Authorization: Bearer <access_token>` on subsequent requests.
 4. **Save preferences** – `PUT /preferences/me` with assets, investor type, content types, and risk level.
 5. **Confirm onboarding** – `GET /auth/me` now returns `"onboardingCompleted": true`.
+
+## Frontend
+
+The frontend is a plain React + TypeScript + Vite app (React Router for routing, no
+Redux, no UI library). It only talks to the FastAPI backend — it never calls
+CoinGecko, CryptoPanic, OpenRouter, or any other external API directly.
+
+### Routes
+
+| Route          | Access                                                         |
+|----------------|------------------------------------------------------------------|
+| `/signup`      | Public                                                            |
+| `/login`       | Public                                                            |
+| `/onboarding`  | Requires login. Redirects to `/dashboard` if onboarding is already complete. |
+| `/dashboard`   | Requires login **and** completed onboarding. Otherwise redirects to `/onboarding`. |
+
+The access token is stored in `localStorage`. `ProtectedRoute` validates it against
+`GET /auth/me` on each protected navigation and redirects to `/login` if it's missing
+or invalid.
+
+### Manual test flow
+
+1. Open **http://localhost:5173** — you land on `/login`.
+2. Go to **Sign up**, create an account. On success you're redirected to `/onboarding`
+   (a placeholder page for this phase — the real onboarding form comes in the next phase).
+3. Click **"Continue to dashboard demo"**. Since onboarding hasn't actually been
+   completed on the backend yet, `ProtectedRoute` re-validates against `GET /auth/me`
+   and sends you straight back to `/onboarding` — the button does not fake completion,
+   and the guard does not trust the click alone.
+4. Complete onboarding for real, e.g. via Swagger UI or curl (see `PUT /preferences/me`
+   above) using the access token from `localStorage` (`cryptalks_token`). Click
+   **"Continue to dashboard demo"** again — this time it succeeds and the placeholder
+   dashboard renders with the disclaimer.
+5. Click **Log out** — you're sent back to `/login` and the token is cleared from
+   `localStorage`.
+6. **Log in** again with the same credentials — since onboarding is now genuinely
+   complete, you're redirected straight to `/dashboard`.
+
+Backend error handling can also be checked from the UI: logging in with a wrong
+password shows a clean "Invalid email or password" message, and signing up with a
+weak password (e.g. `weak`) surfaces the backend's password policy error inline.
