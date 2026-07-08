@@ -174,10 +174,12 @@ rule rather than any ranking or ML model:
   article per day, so there's rarely a repeat to suppress there.
 - **Fun Crypto Meme** — a downvoted meme is excluded from the daily pick's
   pool going forward.
-- In both cases, if excluding downvoted items would leave too few (or zero)
-  to choose from, the filter is dropped for that request rather than showing
-  an empty or near-empty section — showing something is preferred over
-  showing nothing.
+- In both cases, if excluding downvoted items would leave fewer than the
+  minimum useful count, previously-downvoted items are topped back up **one
+  at a time, in relevance order, only until the minimum is met** — not reset
+  to the full pool at once. If you downvote every reachable news item, you'll
+  see the fewest of them come back that still satisfies the minimum, not all
+  of them simultaneously.
 - If OpenRouter is configured, a one-line summary of the user's feedback
   history is also included as context in the AI insight prompt, though the
   model may or may not act on it.

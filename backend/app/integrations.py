@@ -307,6 +307,22 @@ def _rank_news(matched: list[dict[str, object]], rest: list[dict[str, object]], 
     return news
 
 
+def _top_up(news: list[dict[str, object]], pool: list[dict[str, object]], minimum: int) -> list[dict[str, object]]:
+    """If news has fewer than the minimum useful items, add items back from
+    the full pool (in order, including ones already excluded) only until the
+    minimum is met — never resetting to the whole pool at once, so as few
+    previously-downvoted items resurface as possible."""
+    if len(news) >= minimum:
+        return news
+    topped_up = list(news)
+    for item in pool:
+        if len(topped_up) >= minimum:
+            break
+        if item not in topped_up:
+            topped_up.append(item)
+    return topped_up
+
+
 def _static_news(assets: list[str], downvoted_ids: set[str] | None = None) -> list[dict[str, object]]:
     downvoted_ids = downvoted_ids or set()
     selected = set(assets)
@@ -314,10 +330,7 @@ def _static_news(assets: list[str], downvoted_ids: set[str] | None = None) -> li
     general = [item for item in STATIC_NEWS if not item["relatedAssets"]]
 
     news = _rank_news(matched, general, downvoted_ids)
-    if len(news) < MIN_USEFUL_NEWS_ITEMS:
-        # Excluding downvoted items left too few — better to show something
-        # useful than an emptier section, so fall back to the full pool.
-        news = _rank_news(matched, general, set())
+    news = _top_up(news, matched + general, MIN_USEFUL_NEWS_ITEMS)
 
     return news[:MAX_NEWS_ITEMS]
 
@@ -378,9 +391,8 @@ def get_market_news(assets: list[str], downvoted_ids: set[str] | None = None) ->
         matched = [item for item in live_news if set(item["relatedAssets"]) & selected]
         rest = [item for item in live_news if item not in matched]
         news = _rank_news(matched, rest, downvoted_ids)
-        if len(news) >= MIN_USEFUL_NEWS_ITEMS:
-            return news
-        return (matched + rest)[:MAX_NEWS_ITEMS]
+        news = _top_up(news, matched + rest, MIN_USEFUL_NEWS_ITEMS)
+        return news[:MAX_NEWS_ITEMS]
 
     return _static_news(symbols, downvoted_ids)
 
