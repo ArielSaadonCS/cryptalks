@@ -35,6 +35,8 @@ export interface MarketNewsItem {
   summary: string;
   source: string;
   relatedAssets: string[];
+  url: string | null;
+  isFallback: boolean;
 }
 
 export interface CoinPriceItem {

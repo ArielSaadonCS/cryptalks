@@ -19,6 +19,10 @@ function feedbackKey(sectionType: SectionType, itemId: string): string {
   return `${sectionType}:${itemId}`;
 }
 
+function newsSourceLabel(isFallback: boolean): string {
+  return isFallback ? "Fallback news" : "Live news";
+}
+
 function coinSourceLabel(source: string): string {
   switch (source) {
     case "live":
@@ -149,11 +153,22 @@ export default function DashboardPage() {
                 const key = feedbackKey("MARKET_NEWS", item.id);
                 return (
                   <li key={item.id} className="news-item">
-                    <h3>{item.title}</h3>
+                    <h3>
+                      {item.url ? (
+                        <a href={item.url} target="_blank" rel="noopener noreferrer">
+                          {item.title}
+                        </a>
+                      ) : (
+                        item.title
+                      )}
+                    </h3>
                     <p>{item.summary}</p>
                     <div className="news-meta">
                       <span>{item.source}</span>
                       {item.relatedAssets.length > 0 && <span>{item.relatedAssets.join(", ")}</span>}
+                      <span className={`news-badge${item.isFallback ? "" : " news-badge--live"}`}>
+                        {newsSourceLabel(item.isFallback)}
+                      </span>
                     </div>
                     <FeedbackButtons
                       sectionType="MARKET_NEWS"

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.integrations import build_ai_insight, build_market_news, get_coin_prices, pick_meme
+from app.integrations import build_ai_insight, get_coin_prices, get_market_news, pick_meme
 from app.models import User, UserPreferences
 from app.schemas import AIInsightItem, CoinPriceItem, DashboardResponse, MarketNewsItem, MemeItem
 
@@ -23,7 +23,7 @@ def get_today_dashboard(
         )
 
     coin_prices = get_coin_prices(preferences.assets, db)
-    market_news = build_market_news(preferences.assets)
+    market_news = get_market_news(preferences.assets)
     ai_insight = build_ai_insight(preferences, coin_prices)
     meme = pick_meme(current_user.id)
 

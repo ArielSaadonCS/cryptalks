@@ -147,6 +147,8 @@ class MarketNewsItem(BaseModel):
     summary: str
     source: str
     related_assets: list[str] = Field(alias="relatedAssets")
+    url: str | None = None
+    is_fallback: bool = Field(alias="isFallback")
 
 
 class CoinPriceItem(BaseModel):

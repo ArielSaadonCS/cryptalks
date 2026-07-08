@@ -2,8 +2,9 @@
 
 Coin prices are fetched live from CoinGecko when possible, with a PostgreSQL
 cache and a static fallback so the dashboard never fails just because the
-external API is slow or unavailable. Market news and memes are still
-mock/static data for this phase.
+external API is slow or unavailable. Market news is fetched live from
+CryptoPanic when an API key is configured, with static fallback news
+otherwise. Memes are still static data for this phase.
 """
 
 from datetime import datetime, timezone
@@ -44,41 +45,85 @@ STATIC_COIN_PRICES: dict[str, dict[str, object]] = {
     "DOT": {"name": "Polkadot", "priceUsd": 6.9, "change24h": 1.7},
 }
 
-MOCK_NEWS: list[dict[str, object]] = [
+CRYPTOPANIC_URL = "https://cryptopanic.com/api/v1/posts/"
+CRYPTOPANIC_TIMEOUT_SECONDS = 5.0
+MIN_USEFUL_NEWS_ITEMS = 2
+MAX_NEWS_ITEMS = 4
+
+# Final backup if CRYPTOPANIC_API_KEY is missing, the request fails, or it
+# doesn't return enough useful results.
+STATIC_NEWS: list[dict[str, object]] = [
     {
-        "id": "news-btc-1",
-        "title": "Bitcoin market activity increases",
-        "summary": "On-chain data shows more wallets active in the last 24 hours, a pattern worth noting.",
-        "source": "Mock News",
+        "id": "fallback-news-btc-1",
+        "title": "Bitcoin remains central to market attention",
+        "summary": (
+            "Bitcoin continues to be one of the most closely watched assets in the crypto market. "
+            "This is general market context, not a trading recommendation."
+        ),
+        "source": "Static Fallback",
         "relatedAssets": ["BTC"],
+        "url": None,
+        "isFallback": True,
     },
     {
-        "id": "news-eth-1",
-        "title": "Ethereum network activity remains steady",
-        "summary": "Gas usage and transaction counts held steady, suggesting consistent network demand.",
-        "source": "Mock News",
+        "id": "fallback-news-eth-1",
+        "title": "Ethereum network activity stays in focus",
+        "summary": (
+            "Ethereum's network usage and developer activity remain a common reference point for "
+            "investors watching the broader ecosystem."
+        ),
+        "source": "Static Fallback",
         "relatedAssets": ["ETH"],
+        "url": None,
+        "isFallback": True,
     },
     {
-        "id": "news-sol-1",
-        "title": "Solana ecosystem sees continued developer interest",
-        "summary": "New project launches on Solana continue at a steady pace this week.",
-        "source": "Mock News",
+        "id": "fallback-news-sol-1",
+        "title": "Solana ecosystem continues to draw developer interest",
+        "summary": (
+            "Solana's ecosystem has seen continued project activity, a trend investors are watching "
+            "as part of broader market context."
+        ),
+        "source": "Static Fallback",
         "relatedAssets": ["SOL"],
+        "url": None,
+        "isFallback": True,
     },
     {
-        "id": "news-general-1",
+        "id": "fallback-news-general-1",
         "title": "Crypto markets show mixed movement today",
-        "summary": "Major assets moved in different directions, reflecting a lack of a single dominant market theme.",
-        "source": "Mock News",
+        "summary": (
+            "Major assets moved in different directions today, reflecting a lack of a single dominant "
+            "market theme. This may be relevant context for your briefing."
+        ),
+        "source": "Static Fallback",
         "relatedAssets": [],
+        "url": None,
+        "isFallback": True,
     },
     {
-        "id": "news-general-2",
-        "title": "Analysts discuss broader market context",
-        "summary": "Commentary today focused on macro context rather than short-term price predictions.",
-        "source": "Mock News",
+        "id": "fallback-news-regulation-1",
+        "title": "Regulatory developments remain a key risk factor",
+        "summary": (
+            "Regulatory news continues to be one of the most closely watched risk factors for crypto "
+            "investors, underscoring the value of staying risk-aware."
+        ),
+        "source": "Static Fallback",
         "relatedAssets": [],
+        "url": None,
+        "isFallback": True,
+    },
+    {
+        "id": "fallback-news-sentiment-1",
+        "title": "Market sentiment stays mixed among investors",
+        "summary": (
+            "Investor sentiment surveys show a mixed outlook this week, with no strong consensus "
+            "emerging in either direction."
+        ),
+        "source": "Static Fallback",
+        "relatedAssets": [],
+        "url": None,
+        "isFallback": True,
     },
 ]
 
@@ -203,26 +248,83 @@ def get_coin_prices(assets: list[str], db: Session) -> list[dict[str, object]]:
     return results
 
 
-def build_market_news(assets: list[str]) -> list[dict[str, object]]:
+def _static_news(assets: list[str]) -> list[dict[str, object]]:
     selected = set(assets)
-    matched = [item for item in MOCK_NEWS if set(item["relatedAssets"]) & selected]
-    general = [item for item in MOCK_NEWS if not item["relatedAssets"]]
+    matched = [item for item in STATIC_NEWS if set(item["relatedAssets"]) & selected]
+    general = [item for item in STATIC_NEWS if not item["relatedAssets"]]
 
     news = list(matched)
     for item in general:
-        if len(news) >= 4:
+        if len(news) >= MAX_NEWS_ITEMS:
             break
         if item not in news:
             news.append(item)
 
-    if len(news) < 2:
-        for item in MOCK_NEWS:
-            if len(news) >= 2:
+    if len(news) < MIN_USEFUL_NEWS_ITEMS:
+        for item in STATIC_NEWS:
+            if len(news) >= MIN_USEFUL_NEWS_ITEMS:
                 break
             if item not in news:
                 news.append(item)
 
-    return news[:4]
+    return news[:MAX_NEWS_ITEMS]
+
+
+def _fetch_live_news(symbols: list[str]) -> list[dict[str, object]] | None:
+    """Try to fetch live crypto news from CryptoPanic. Returns None if no API
+    key is configured, the request fails, or there are no usable results."""
+    if not settings.cryptopanic_api_key:
+        return None
+
+    params = {"auth_token": settings.cryptopanic_api_key, "public": "true", "kind": "news"}
+    if symbols:
+        params["currencies"] = ",".join(symbols)
+
+    try:
+        response = httpx.get(CRYPTOPANIC_URL, params=params, timeout=CRYPTOPANIC_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as exc:  # network errors, timeouts, bad JSON, non-2xx status, etc.
+        print(f"[integrations] CryptoPanic request failed, falling back: {exc}")
+        return None
+
+    news_items: list[dict[str, object]] = []
+    for index, item in enumerate(data.get("results") or []):
+        title = item.get("title")
+        if not title:
+            continue
+        related = [c["code"].upper() for c in item.get("currencies") or [] if c.get("code")]
+        source_title = (item.get("source") or {}).get("title") or "a news source"
+        news_items.append(
+            {
+                "id": f"cryptopanic-{item.get('id', index)}",
+                "title": title,
+                "summary": f"Coverage from {source_title}, shared as market context. Not a trading recommendation.",
+                "source": "Crypto News",
+                "relatedAssets": related,
+                "url": item.get("url"),
+                "isFallback": False,
+            }
+        )
+
+    return news_items or None
+
+
+def get_market_news(assets: list[str]) -> list[dict[str, object]]:
+    """Return 2-4 market news items: live from CryptoPanic when an API key is
+    configured and the request returns enough useful results, otherwise
+    static fallback news. Fallback news prefers items related to the given
+    assets, padded out with general market news."""
+    symbols = [symbol.upper() for symbol in assets]
+
+    live_news = _fetch_live_news(symbols)
+    if live_news and len(live_news) >= MIN_USEFUL_NEWS_ITEMS:
+        selected = set(symbols)
+        matched = [item for item in live_news if set(item["relatedAssets"]) & selected]
+        rest = [item for item in live_news if item not in matched]
+        return (matched + rest)[:MAX_NEWS_ITEMS]
+
+    return _static_news(symbols)
 
 
 def pick_meme(user_id: int) -> dict[str, object]:

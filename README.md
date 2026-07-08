@@ -21,9 +21,12 @@ This repository currently implements:
 - **Phase 7** – real coin prices: `GET /dashboard/today` now fetches live prices
   from CoinGecko through the backend, with a PostgreSQL cache and a static
   fallback so the dashboard never breaks if CoinGecko is unavailable.
+- **Phase 8** – real market news: `GET /dashboard/today` now fetches live crypto
+  news from CryptoPanic through the backend when an API key is configured, with
+  static fallback news otherwise or if the request fails.
 
-Later modules (real news feeds via CryptoPanic, a real AI model via OpenRouter,
-and using feedback to actually tune recommendations) are not part of this phase.
+Later modules (a real AI model via OpenRouter, and using feedback to actually
+tune recommendations) are not part of this phase.
 
 ## Project structure
 
@@ -39,7 +42,7 @@ cryptalks/
 │   │   ├── auth.py        # Password hashing, JWT creation/validation
 │   │   ├── preferences.py # Preferences router (GET/PUT /preferences/me)
 │   │   ├── dashboard.py   # Dashboard router (GET /dashboard/today)
-│   │   ├── integrations.py # CoinGecko client + cache/fallback + mock news/insight/meme
+│   │   ├── integrations.py # CoinGecko + CryptoPanic clients, cache/fallback logic, mock insight/meme
 │   │   └── feedback.py    # Feedback router (POST /feedback, GET /feedback/me)
 │   ├── requirements.txt
 │   └── Dockerfile
@@ -85,10 +88,12 @@ Tables are created automatically on backend startup.
 
 Both `backend` and `frontend` services in `docker-compose.yml` ship with working
 development defaults (`DATABASE_URL`, `JWT_SECRET_KEY`, `JWT_ALGORITHM`,
-`ACCESS_TOKEN_EXPIRE_MINUTES`, `COINGECKO_API_KEY`, `VITE_API_URL`), so
-`docker compose up --build` works out of the box — `COINGECKO_API_KEY` is optional
-and empty by default; the backend calls CoinGecko's free public endpoint without it.
-For running either service outside Docker:
+`ACCESS_TOKEN_EXPIRE_MINUTES`, `COINGECKO_API_KEY`, `CRYPTOPANIC_API_KEY`,
+`VITE_API_URL`), so `docker compose up --build` works out of the box —
+`COINGECKO_API_KEY` and `CRYPTOPANIC_API_KEY` are both optional and empty by
+default; the backend calls CoinGecko's free public endpoint without a key, and
+falls back to static news when no CryptoPanic key is set. For running either
+service outside Docker:
 
 - Backend: copy `.env.example` to `backend/.env` and adjust the values, then run
   `uvicorn app.main:app --reload` from `backend/` against your own Postgres instance.
@@ -235,15 +240,16 @@ curl http://localhost:8000/feedback/me \
 ## Dashboard data sources
 
 `GET /dashboard/today` personalizes its response using the user's saved
-preferences. As of this phase, coin prices are real; everything else is still
-mock/static data (see the roadmap above for what's next):
+preferences. As of this phase, coin prices and market news are both real when
+possible; the AI insight and meme are still mock/static (see the roadmap above
+for what's next):
 
 - **Coin prices** — real, live prices from CoinGecko for only the assets the user
   selected during onboarding (see "Coin prices (CoinGecko)" below for the full
   fetch/cache/fallback behavior).
-- **Market news** — mock news items related to the user's selected assets (BTC,
-  ETH, and SOL each have a dedicated mock item) are shown first, padded out with
-  general market news to a total of 2–4 items.
+- **Market news** — real crypto news from CryptoPanic when an API key is
+  configured, otherwise static fallback news (see "Market news (CryptoPanic)"
+  below).
 - **AI insight** — a deterministic, template-generated paragraph built from the
   user's investor type, selected assets, preferred content types, and risk level,
   plus one or two observations about the coin price data (live or fallback —
@@ -288,6 +294,46 @@ returns all 10 supported coins unless the user selected all 10.
 An optional `COINGECKO_API_KEY` environment variable is supported (sent as the
 `x-cg-demo-api-key` header when set); the app works without one using CoinGecko's
 free public endpoint.
+
+## Market news (CryptoPanic)
+
+Market news is fetched **through the backend only** — the frontend never calls
+CryptoPanic or any other external news API directly; it only ever calls
+`GET /dashboard/today`.
+
+`get_market_news()` in `backend/app/integrations.py` follows this order:
+
+1. **No API key** — if `CRYPTOPANIC_API_KEY` isn't set, the external call is
+   skipped entirely and static fallback news is used. This is the default.
+2. **Live** — if a key is configured, the backend calls CryptoPanic's
+   `/api/v1/posts/` endpoint with a 5-second timeout, filtered to the user's
+   selected assets via CryptoPanic's `currencies` parameter. Each result is
+   normalized into a market news item with `"source": "Crypto News"`,
+   `"isFallback": false`, and the real article `url`; the `summary` field is a
+   generic, backend-written sentence (CryptoPanic's free tier doesn't provide
+   article bodies) — the UI is never presented as officially affiliated with
+   CryptoPanic.
+3. **Fallback on failure or thin results** — if the request fails (timeout,
+   network error, non-2xx), or returns fewer than 2 usable items, the backend
+   silently falls back to static news instead of returning a partial/broken
+   list. The failure is logged as a backend warning, never raised to the caller.
+4. **Static fallback** — a fixed list in `integrations.py` covering BTC, ETH,
+   SOL, general market movement, regulatory/risk-awareness, and market
+   sentiment. Items related to the user's selected assets are preferred and
+   shown first, padded out with general items to 2–4 total, exactly like the
+   live path. Each item has `"source": "Static Fallback"`, `"isFallback": true`,
+   and `"url": null`.
+
+All news wording (both the backend-written summaries and the static fallback
+copy) intentionally avoids directive language ("buy", "sell", "this coin will
+pump", "guaranteed profit") in favor of neutral framing ("market context", "may
+be relevant", "not a trading recommendation") — consistent with Cryptalks not
+being a trading advice product. Real article headlines from CryptoPanic are
+shown as-is in the `title` field, since they're the actual news, not
+Cryptalks-authored copy.
+
+An optional `CRYPTOPANIC_API_KEY` environment variable enables the live path;
+the app works fully without one.
 
 ## Feedback vs. preferences
 
@@ -360,12 +406,14 @@ the backend is always the source of truth for `onboardingCompleted`.
    **Log out** button.
 2. A preference summary (assets, investor type, content types, risk level).
 3. The disclaimer.
-4. Four sections in a responsive grid: **Market News** (cards with title, summary,
-   source, related assets), **Coin Prices** (a table with symbol, name, price, 24h
-   change colored green/red, and a small subtle label — "Live data", "Cached data",
-   or "Fallback data" — reflecting the backend's `source` field for that row),
-   **AI Insight of the Day** (a highlighted card), and **Fun Crypto Meme** (title +
-   image).
+4. Four sections in a responsive grid: **Market News** (cards with title — a link
+   to the article when a `url` is present, opened in a new tab with
+   `rel="noopener noreferrer"` — summary, source, related assets, and a subtle
+   "Live news"/"Fallback news" label from `isFallback`), **Coin Prices** (a table
+   with symbol, name, price, 24h change colored green/red, and a small subtle
+   label — "Live data", "Cached data", or "Fallback data" — reflecting the
+   backend's `source` field for that row), **AI Insight of the Day** (a
+   highlighted card), and **Fun Crypto Meme** (title + image).
 
 If `GET /dashboard/today` responds `403` (onboarding not complete), the page
 redirects to `/onboarding` instead of showing an error — this is a defensive
@@ -435,3 +483,20 @@ message without calling the backend.
      **"Fallback data"** (the static dictionary in `integrations.py`).
 6. In both failure cases, `GET /dashboard/today` still returns `200` with a
    complete dashboard — it never errors out just because CoinGecko is unreachable.
+
+### Testing CryptoPanic + fallback behavior
+
+1. Start the app with `docker compose up --build` (no `CRYPTOPANIC_API_KEY` set —
+   this is the default).
+2. Sign up, log in, and complete onboarding selecting **BTC** and **ETH**.
+3. Open the dashboard and confirm **Market News** shows 2–4 items, each labeled
+   **"Fallback news"**, with BTC- and ETH-related items shown first.
+4. If you have a CryptoPanic API key, add it to `docker-compose.yml`'s `backend`
+   service (`CRYPTOPANIC_API_KEY: "your-key-here"`) and rebuild
+   (`docker compose up --build backend`). Reload the dashboard — items should now
+   be labeled **"Live news"**, each title linking out to the real article.
+5. To confirm the failure path, temporarily set an invalid key (e.g.
+   `CRYPTOPANIC_API_KEY: "invalid"`) and rebuild — CryptoPanic will reject the
+   request, the backend logs a warning, and the dashboard falls back to static
+   news automatically. `GET /dashboard/today` still returns `200` in every case —
+   it never fails because of the news API.

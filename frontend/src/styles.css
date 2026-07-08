@@ -200,6 +200,15 @@ button.secondary:hover:not(:disabled) {
   font-size: 0.95rem;
 }
 
+.news-item h3 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.news-item h3 a:hover {
+  text-decoration: underline;
+}
+
 .news-item p {
   margin: 0 0 6px;
   font-size: 0.85rem;
@@ -211,6 +220,16 @@ button.secondary:hover:not(:disabled) {
   gap: 10px;
   font-size: 0.75rem;
   color: #7a8194;
+}
+
+.news-badge {
+  margin-left: auto;
+  font-size: 0.68rem;
+  color: #b7791f;
+}
+
+.news-badge--live {
+  color: #1a8f4c;
 }
 
 .price-table {
