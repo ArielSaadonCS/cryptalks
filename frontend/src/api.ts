@@ -29,6 +29,41 @@ export interface PreferencesInput {
   riskLevel: string;
 }
 
+export interface MarketNewsItem {
+  id: string;
+  title: string;
+  summary: string;
+  source: string;
+  relatedAssets: string[];
+}
+
+export interface CoinPriceItem {
+  id: string;
+  symbol: string;
+  name: string;
+  priceUsd: number;
+  change24h: number;
+}
+
+export interface AIInsightItem {
+  id: string;
+  title: string;
+  content: string;
+}
+
+export interface MemeItem {
+  id: string;
+  title: string;
+  imageUrl: string;
+}
+
+export interface DashboardData {
+  marketNews: MarketNewsItem[];
+  coinPrices: CoinPriceItem[];
+  aiInsight: AIInsightItem;
+  meme: MemeItem;
+}
+
 export class ApiError extends Error {
   status: number;
 
@@ -114,4 +149,8 @@ export function savePreferences(preferences: PreferencesInput): Promise<Preferen
     method: "PUT",
     body: JSON.stringify(preferences),
   });
+}
+
+export function getDashboardToday(): Promise<DashboardData> {
+  return request<DashboardData>("/dashboard/today");
 }

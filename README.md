@@ -14,9 +14,11 @@ This repository currently implements:
   token handling, and placeholder onboarding/dashboard pages.
 - **Phase 4** – real onboarding form: a preferences form wired to the backend, with a
   dashboard that summarizes the saved preferences.
+- **Phase 5** – dashboard shell: a personalized daily briefing built from backend
+  mock/static data (market news, coin prices, an AI insight, and a meme).
 
-Later modules (the full dashboard, feedback, external market data) are not part of
-this phase.
+Later modules (real news/price feeds via CoinGecko/CryptoPanic, a real AI model via
+OpenRouter, and user feedback) are not part of this phase.
 
 ## Project structure
 
@@ -30,7 +32,9 @@ cryptalks/
 │   │   ├── models.py      # User and UserPreferences models
 │   │   ├── schemas.py     # Pydantic request/response schemas + validation
 │   │   ├── auth.py        # Password hashing, JWT creation/validation
-│   │   └── preferences.py # Preferences router (GET/PUT /preferences/me)
+│   │   ├── preferences.py # Preferences router (GET/PUT /preferences/me)
+│   │   ├── dashboard.py   # Dashboard router (GET /dashboard/today)
+│   │   └── integrations.py # Mock/static market data + personalization logic
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── frontend/
@@ -40,12 +44,13 @@ cryptalks/
 │   │   ├── api.ts                # Backend API helper (fetch, token storage)
 │   │   ├── styles.css            # Global styles
 │   │   ├── components/
-│   │   │   └── ProtectedRoute.tsx
+│   │   │   ├── ProtectedRoute.tsx
+│   │   │   └── DashboardCard.tsx
 │   │   └── pages/
 │   │       ├── LoginPage.tsx
 │   │       ├── SignupPage.tsx
 │   │       ├── OnboardingPage.tsx  # Real preferences form, wired to the backend
-│   │       └── DashboardPage.tsx   # Placeholder; shows saved preference summary
+│   │       └── DashboardPage.tsx   # Personalized briefing (news, prices, AI insight, meme)
 │   ├── package.json
 │   ├── .env.example
 │   └── Dockerfile
@@ -93,9 +98,12 @@ Never commit real secrets.
 | GET    | `/auth/me`       | Yes (Bearer)   | Returns the current authenticated user    |
 | GET    | `/preferences/me`| Yes (Bearer)   | Returns the current user's preferences    |
 | PUT    | `/preferences/me`| Yes (Bearer)   | Creates or updates preferences, completes onboarding |
+| GET    | `/dashboard/today`| Yes (Bearer)  | Returns the personalized daily briefing (mock data) |
 
 `GET /auth/me` reports `onboardingCompleted: true` once the user has saved
-preferences via `PUT /preferences/me`.
+preferences via `PUT /preferences/me`. `GET /dashboard/today` returns
+`403 Forbidden` with `"Complete onboarding before viewing the dashboard"` if the
+user hasn't saved preferences yet.
 
 ### Password policy
 
@@ -172,6 +180,13 @@ curl http://localhost:8000/preferences/me \
   -H "Authorization: Bearer <access_token>"
 ```
 
+### Get today's dashboard
+
+```bash
+curl http://localhost:8000/dashboard/today \
+  -H "Authorization: Bearer <access_token>"
+```
+
 ## Example end-to-end flow (API)
 
 1. **Signup** – `POST /auth/signup` with name, email, password → returns an access token.
@@ -179,6 +194,29 @@ curl http://localhost:8000/preferences/me \
 3. **Use the token** – pass it as `Authorization: Bearer <access_token>` on subsequent requests.
 4. **Save preferences** – `PUT /preferences/me` with assets, investor type, content types, and risk level.
 5. **Confirm onboarding** – `GET /auth/me` now returns `"onboardingCompleted": true`.
+6. **Load the dashboard** – `GET /dashboard/today` now returns a personalized briefing
+   instead of a 403.
+
+## Dashboard (mock data)
+
+This phase does not call any real external APIs (no CoinGecko, CryptoPanic, or
+OpenRouter yet) — `GET /dashboard/today` builds its response entirely from static
+data in `backend/app/integrations.py`, personalized using the user's saved
+preferences:
+
+- **Coin prices** — only the assets the user selected during onboarding, from a
+  fixed table of mock prices for the 10 supported symbols.
+- **Market news** — mock news items related to the user's selected assets (BTC,
+  ETH, and SOL each have a dedicated mock item) are shown first, padded out with
+  general market news to a total of 2–4 items.
+- **AI insight** — a deterministic, template-generated paragraph built from the
+  user's investor type, selected assets, preferred content types, and risk level,
+  plus one or two observations about the mock price data. Wording is
+  intentionally careful (e.g. "this may be useful context") and explicitly states
+  that Cryptalks does not give financial advice — it never tells the user to buy,
+  sell, or expect a specific market outcome.
+- **Meme** — one of a small fixed set of placeholder memes, chosen deterministically
+  per user.
 
 ## Frontend
 
@@ -219,8 +257,24 @@ request is in flight. A successful save redirects to `/dashboard`; a backend
 validation error is shown inline instead. Preferences are never faked client-side —
 the backend is always the source of truth for `onboardingCompleted`.
 
-`/dashboard` calls `GET /preferences/me` and renders a short summary (assets,
-investor type, content types, risk level) above the disclaimer.
+### Dashboard
+
+`/dashboard` loads `GET /preferences/me` (for the preference summary) and
+`GET /dashboard/today` (for the briefing) in parallel, and renders:
+
+1. A header — "Cryptalks", "Your personalized daily crypto briefing", and a
+   **Log out** button.
+2. A preference summary (assets, investor type, content types, risk level).
+3. The disclaimer.
+4. Four sections in a responsive grid: **Market News** (cards with title, summary,
+   source, related assets), **Coin Prices** (a table with symbol, name, price, and
+   24h change, colored green/red), **AI Insight of the Day** (a highlighted card),
+   and **Fun Crypto Meme** (title + image).
+
+If `GET /dashboard/today` responds `403` (onboarding not complete), the page
+redirects to `/onboarding` instead of showing an error — this is a defensive
+fallback, since `ProtectedRoute` already blocks `/dashboard` until onboarding is
+complete.
 
 ### Manual test flow
 
@@ -228,8 +282,9 @@ investor type, content types, risk level) above the disclaimer.
 2. Go to **Sign up**, create an account. On success you're redirected to `/onboarding`.
 3. Fill out the onboarding form (pick at least one asset, an investor type, at least
    one content type, and a risk level) and submit.
-4. On success you're redirected to `/dashboard`, which now shows a summary of the
-   preferences you just saved, plus the disclaimer.
+4. On success you're redirected to `/dashboard`, which now shows your preference
+   summary, the disclaimer, and all four personalized briefing sections built from
+   the assets and investor type you selected.
 5. Click **Log out** — you're sent back to `/login` and the token is cleared from
    `localStorage`.
 6. **Log in** again with the same credentials — since onboarding is now genuinely

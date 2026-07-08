@@ -136,3 +136,46 @@ class PreferenceResponse(BaseModel):
     content_types: list[str] = Field(alias="contentTypes")
     risk_level: str = Field(alias="riskLevel")
     onboarding_completed: bool = Field(alias="onboardingCompleted")
+
+
+class MarketNewsItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    title: str
+    summary: str
+    source: str
+    related_assets: list[str] = Field(alias="relatedAssets")
+
+
+class CoinPriceItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    symbol: str
+    name: str
+    price_usd: float = Field(alias="priceUsd")
+    change_24h: float = Field(alias="change24h")
+
+
+class AIInsightItem(BaseModel):
+    id: str
+    title: str
+    content: str
+
+
+class MemeItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    title: str
+    image_url: str = Field(alias="imageUrl")
+
+
+class DashboardResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    market_news: list[MarketNewsItem] = Field(alias="marketNews")
+    coin_prices: list[CoinPriceItem] = Field(alias="coinPrices")
+    ai_insight: AIInsightItem = Field(alias="aiInsight")
+    meme: MemeItem
