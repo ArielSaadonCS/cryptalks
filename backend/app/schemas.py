@@ -1,6 +1,6 @@
 import re
 
-from pydantic import BaseModel, EmailStr, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 ALLOWED_SPECIAL_CHARS = "!@#$%^&*_-?"
 _ALLOWED_CHARS_PATTERN = re.compile(rf"^[A-Za-z0-9{re.escape(ALLOWED_SPECIAL_CHARS)}]+$")
@@ -65,3 +65,74 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
+
+
+ALLOWED_ASSETS = {"BTC", "ETH", "SOL", "ADA", "XRP", "DOGE", "AVAX", "LINK", "MATIC", "DOT"}
+ALLOWED_INVESTOR_TYPES = {"HODLer", "Day Trader", "NFT Collector", "Beginner", "Researcher"}
+ALLOWED_CONTENT_TYPES = {"Market News", "Charts", "AI Insights", "Fun"}
+ALLOWED_RISK_LEVELS = {"Low", "Medium", "High"}
+
+
+class PreferenceCreateOrUpdate(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "example": {
+                "assets": ["BTC", "ETH", "SOL"],
+                "investorType": "HODLer",
+                "contentTypes": ["Market News", "Charts", "Fun"],
+                "riskLevel": "Medium",
+            }
+        },
+    )
+
+    assets: list[str]
+    investor_type: str = Field(alias="investorType")
+    content_types: list[str] = Field(alias="contentTypes")
+    risk_level: str = Field(alias="riskLevel")
+
+    @field_validator("assets")
+    @classmethod
+    def validate_assets(cls, value: list[str]) -> list[str]:
+        if not value:
+            raise ValueError("At least one asset is required")
+        invalid = sorted(set(value) - ALLOWED_ASSETS)
+        if invalid:
+            raise ValueError(f"Invalid asset(s): {', '.join(invalid)}. Allowed: {', '.join(sorted(ALLOWED_ASSETS))}")
+        return value
+
+    @field_validator("investor_type")
+    @classmethod
+    def validate_investor_type(cls, value: str) -> str:
+        if value not in ALLOWED_INVESTOR_TYPES:
+            raise ValueError(f"Invalid investorType. Allowed: {', '.join(sorted(ALLOWED_INVESTOR_TYPES))}")
+        return value
+
+    @field_validator("content_types")
+    @classmethod
+    def validate_content_types(cls, value: list[str]) -> list[str]:
+        if not value:
+            raise ValueError("At least one content type is required")
+        invalid = sorted(set(value) - ALLOWED_CONTENT_TYPES)
+        if invalid:
+            raise ValueError(
+                f"Invalid content type(s): {', '.join(invalid)}. Allowed: {', '.join(sorted(ALLOWED_CONTENT_TYPES))}"
+            )
+        return value
+
+    @field_validator("risk_level")
+    @classmethod
+    def validate_risk_level(cls, value: str) -> str:
+        if value not in ALLOWED_RISK_LEVELS:
+            raise ValueError(f"Invalid riskLevel. Allowed: {', '.join(sorted(ALLOWED_RISK_LEVELS))}")
+        return value
+
+
+class PreferenceResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    assets: list[str]
+    investor_type: str = Field(alias="investorType")
+    content_types: list[str] = Field(alias="contentTypes")
+    risk_level: str = Field(alias="riskLevel")
+    onboarding_completed: bool = Field(alias="onboardingCompleted")

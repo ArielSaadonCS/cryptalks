@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.auth import create_access_token, get_current_user, hash_password, verify_password
 from app.database import Base, engine, get_db
+from app.preferences import get_onboarding_completed, router as preferences_router
 from app.schemas import LoginRequest, SignupRequest, TokenResponse, UserResponse
 
 Base.metadata.create_all(bind=engine)
@@ -18,6 +19,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(preferences_router)
 
 
 @app.get("/")
@@ -56,15 +59,20 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     access_token = create_access_token({"sub": str(user.id)})
     return TokenResponse(
         access_token=access_token,
-        user=UserResponse(id=user.id, name=user.name, email=user.email, onboardingCompleted=False),
+        user=UserResponse(
+            id=user.id,
+            name=user.name,
+            email=user.email,
+            onboardingCompleted=get_onboarding_completed(db, user.id),
+        ),
     )
 
 
 @app.get("/auth/me", response_model=UserResponse)
-def get_me(current_user: models.User = Depends(get_current_user)):
+def get_me(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     return UserResponse(
         id=current_user.id,
         name=current_user.name,
         email=current_user.email,
-        onboardingCompleted=False,
+        onboardingCompleted=get_onboarding_completed(db, current_user.id),
     )
