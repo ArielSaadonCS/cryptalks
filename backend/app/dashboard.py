@@ -10,6 +10,10 @@ from app.schemas import AIInsightItem, CoinPriceItem, DashboardResponse, MarketN
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
+def _downvoted_item_ids(feedback_rows: list[Feedback], section_type: str) -> set[str]:
+    return {row.item_id for row in feedback_rows if row.section_type == section_type and row.vote == "DOWN"}
+
+
 @router.get("/today", response_model=DashboardResponse)
 def get_today_dashboard(
     current_user: User = Depends(get_current_user),
@@ -22,14 +26,13 @@ def get_today_dashboard(
             detail="Complete onboarding before viewing the dashboard",
         )
 
-    coin_prices = get_coin_prices(preferences.assets, db)
-    market_news = get_market_news(preferences.assets)
-
     feedback_rows = db.query(Feedback).filter(Feedback.user_id == current_user.id).all()
     feedback_items = [{"sectionType": row.section_type, "itemId": row.item_id, "vote": row.vote} for row in feedback_rows]
 
+    coin_prices = get_coin_prices(preferences.assets, db)
+    market_news = get_market_news(preferences.assets, _downvoted_item_ids(feedback_rows, "MARKET_NEWS"))
     ai_insight = generate_ai_insight(preferences, coin_prices, market_news, feedback_items)
-    meme = pick_meme(current_user.id)
+    meme = pick_meme(current_user.id, _downvoted_item_ids(feedback_rows, "MEME"))
 
     return DashboardResponse(
         market_news=[MarketNewsItem(**item) for item in market_news],

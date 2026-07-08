@@ -294,24 +294,30 @@ def get_coin_prices(assets: list[str], db: Session) -> list[dict[str, object]]:
     return results
 
 
-def _static_news(assets: list[str]) -> list[dict[str, object]]:
+def _rank_news(matched: list[dict[str, object]], rest: list[dict[str, object]], exclude_ids: set[str]) -> list[dict[str, object]]:
+    """Build a news list from matched items first, then the rest, skipping any
+    item whose id is in exclude_ids (previously downvoted by the user)."""
+    news: list[dict[str, object]] = []
+    for item in matched + rest:
+        if item["id"] in exclude_ids or item in news:
+            continue
+        news.append(item)
+        if len(news) >= MAX_NEWS_ITEMS:
+            break
+    return news
+
+
+def _static_news(assets: list[str], downvoted_ids: set[str] | None = None) -> list[dict[str, object]]:
+    downvoted_ids = downvoted_ids or set()
     selected = set(assets)
     matched = [item for item in STATIC_NEWS if set(item["relatedAssets"]) & selected]
     general = [item for item in STATIC_NEWS if not item["relatedAssets"]]
 
-    news = list(matched)
-    for item in general:
-        if len(news) >= MAX_NEWS_ITEMS:
-            break
-        if item not in news:
-            news.append(item)
-
+    news = _rank_news(matched, general, downvoted_ids)
     if len(news) < MIN_USEFUL_NEWS_ITEMS:
-        for item in STATIC_NEWS:
-            if len(news) >= MIN_USEFUL_NEWS_ITEMS:
-                break
-            if item not in news:
-                news.append(item)
+        # Excluding downvoted items left too few — better to show something
+        # useful than an emptier section, so fall back to the full pool.
+        news = _rank_news(matched, general, set())
 
     return news[:MAX_NEWS_ITEMS]
 
@@ -356,32 +362,43 @@ def _fetch_live_news(symbols: list[str]) -> list[dict[str, object]] | None:
     return news_items or None
 
 
-def get_market_news(assets: list[str]) -> list[dict[str, object]]:
+def get_market_news(assets: list[str], downvoted_ids: set[str] | None = None) -> list[dict[str, object]]:
     """Return 2-4 market news items: live from CryptoPanic when an API key is
     configured and the request returns enough useful results, otherwise
     static fallback news. Fallback news prefers items related to the given
-    assets, padded out with general market news."""
+    assets, padded out with general market news. Items the user has
+    previously downvoted are skipped where possible (never at the cost of
+    returning fewer than the minimum useful items)."""
     symbols = [symbol.upper() for symbol in assets]
+    downvoted_ids = downvoted_ids or set()
 
     live_news = _fetch_live_news(symbols)
     if live_news and len(live_news) >= MIN_USEFUL_NEWS_ITEMS:
         selected = set(symbols)
         matched = [item for item in live_news if set(item["relatedAssets"]) & selected]
         rest = [item for item in live_news if item not in matched]
+        news = _rank_news(matched, rest, downvoted_ids)
+        if len(news) >= MIN_USEFUL_NEWS_ITEMS:
+            return news
         return (matched + rest)[:MAX_NEWS_ITEMS]
 
-    return _static_news(symbols)
+    return _static_news(symbols, downvoted_ids)
 
 
-def pick_meme(user_id: int) -> dict[str, object]:
+def pick_meme(user_id: int, downvoted_ids: set[str] | None = None) -> dict[str, object]:
     """Pick one meme from the static catalog, stable for a given user for the
     whole day so a dashboard refresh doesn't change it, but different across
     users and days. Uses a stable hash (not Python's randomized built-in
-    hash()) so the choice survives backend restarts."""
+    hash()) so the choice survives backend restarts. Memes the user has
+    previously downvoted are excluded from the pool, unless that would leave
+    no memes to choose from."""
+    downvoted_ids = downvoted_ids or set()
+    pool = [meme for meme in MEME_CATALOG if meme["id"] not in downvoted_ids] or MEME_CATALOG
+
     today = datetime.now(timezone.utc).date().isoformat()
     digest = hashlib.sha256(f"{user_id}-{today}".encode()).hexdigest()
-    index = int(digest, 16) % len(MEME_CATALOG)
-    return {**MEME_CATALOG[index], "isFallback": True}
+    index = int(digest, 16) % len(pool)
+    return {**pool[index], "isFallback": True}
 
 
 OPENROUTER_TIMEOUT_SECONDS = 10.0

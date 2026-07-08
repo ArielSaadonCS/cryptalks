@@ -165,16 +165,31 @@ Cryptalks deliberately keeps two kinds of user data separate:
   modifies preferences or `onboardingCompleted` — it's its own row, and the
   user never has to redo onboarding because of it.
 
-No ranking or ML logic is implemented yet — feedback is stored, not acted on.
-Future phases could use it to:
+Feedback does inform two parts of the dashboard, with a deliberately simple
+rule rather than any ranking or ML model:
 
-- Prioritize or surface content types / assets a user consistently upvotes
-- Reduce content types a user consistently downvotes
-- Tune the tone or focus of the AI insight prompt based on past votes
-- Eventually train or evaluate a lightweight ranking model
+- **Market News** — a news item the user has downvoted is excluded from
+  future selection where possible. This mostly matters for the static
+  fallback pool (stable IDs); live CryptoPanic articles get a new ID per
+  article per day, so there's rarely a repeat to suppress there.
+- **Fun Crypto Meme** — a downvoted meme is excluded from the daily pick's
+  pool going forward.
+- In both cases, if excluding downvoted items would leave too few (or zero)
+  to choose from, the filter is dropped for that request rather than showing
+  an empty or near-empty section — showing something is preferred over
+  showing nothing.
+- If OpenRouter is configured, a one-line summary of the user's feedback
+  history is also included as context in the AI insight prompt, though the
+  model may or may not act on it.
 
-None of that is implemented in this version — there is no ML training,
-fine-tuning, or recommendation engine in the codebase today.
+Coin prices are not filtered by feedback — a downvoted price row would just
+mean the user doesn't want to see that asset, which is really an onboarding
+preference change, not a feedback-driven exclusion.
+
+There is still no ranking model, ML training, or fine-tuning anywhere in the
+codebase — this is a hand-written exclusion rule, not a recommendation engine.
+Future phases could build on it, e.g. weighting which content types or assets
+get emphasis, or eventually training/evaluating a lightweight ranking model.
 
 ## AI safety note
 
