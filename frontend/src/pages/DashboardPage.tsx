@@ -46,6 +46,7 @@ export default function DashboardPage() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [memeImageFailed, setMemeImageFailed] = useState(false);
 
   const [feedback, setFeedback] = useState<Record<string, Vote>>({});
   const [feedbackSubmitting, setFeedbackSubmitting] = useState<Record<string, boolean>>({});
@@ -104,7 +105,20 @@ export default function DashboardPage() {
   }
 
   if (loading) {
-    return <div className="loading-screen">Loading your briefing...</div>;
+    return (
+      <div className="loading-screen">
+        <div className="loading-spinner" />
+        <p>Loading your briefing...</p>
+      </div>
+    );
+  }
+
+  if (error || !preferences || !dashboard) {
+    return (
+      <div className="loading-screen">
+        <div className="error-message">{error ?? "Could not load your dashboard. Please try again."}</div>
+      </div>
+    );
   }
 
   return (
@@ -119,23 +133,19 @@ export default function DashboardPage() {
         </button>
       </header>
 
-      {error && <div className="error-message">{error}</div>}
-
-      {preferences && (
-        <div className="preferences-summary">
-          <h2>Your preferences</h2>
-          <dl>
-            <dt>Assets</dt>
-            <dd>{preferences.assets.join(", ")}</dd>
-            <dt>Investor type</dt>
-            <dd>{preferences.investorType}</dd>
-            <dt>Content types</dt>
-            <dd>{preferences.contentTypes.join(", ")}</dd>
-            <dt>Risk level</dt>
-            <dd>{preferences.riskLevel}</dd>
-          </dl>
-        </div>
-      )}
+      <div className="preferences-summary">
+        <h2>Your preferences</h2>
+        <dl>
+          <dt>Assets</dt>
+          <dd>{preferences.assets.join(", ")}</dd>
+          <dt>Investor type</dt>
+          <dd>{preferences.investorType}</dd>
+          <dt>Content types</dt>
+          <dd>{preferences.contentTypes.join(", ")}</dd>
+          <dt>Risk level</dt>
+          <dd>{preferences.riskLevel}</dd>
+        </dl>
+      </div>
 
       <p className="disclaimer">
         Cryptalks provides market context and educational summaries only. It does not provide financial advice or
@@ -149,9 +159,11 @@ export default function DashboardPage() {
 
       {feedbackError && <div className="error-message">{feedbackError}</div>}
 
-      {dashboard && (
-        <div className="dashboard-grid">
-          <DashboardCard title="Market News">
+      <div className="dashboard-grid">
+        <DashboardCard title="Market News">
+          {dashboard.marketNews.length === 0 ? (
+            <p className="empty-state">No market news available right now.</p>
+          ) : (
             <ul className="news-list">
               {dashboard.marketNews.map((item) => {
                 const key = feedbackKey("MARKET_NEWS", item.id);
@@ -186,9 +198,13 @@ export default function DashboardPage() {
                 );
               })}
             </ul>
-          </DashboardCard>
+          )}
+        </DashboardCard>
 
-          <DashboardCard title="Coin Prices">
+        <DashboardCard title="Coin Prices">
+          {dashboard.coinPrices.length === 0 ? (
+            <p className="empty-state">No price data available right now.</p>
+          ) : (
             <table className="price-table">
               <thead>
                 <tr>
@@ -209,9 +225,7 @@ export default function DashboardPage() {
                           {coinSourceLabel(coin.source)}
                         </div>
                       </td>
-                      <td>
-                        ${coin.priceUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                      </td>
+                      <td>${coin.priceUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                       <td className={coin.change24h >= 0 ? "positive" : "negative"}>
                         {coin.change24h >= 0 ? "+" : ""}
                         {coin.change24h.toFixed(1)}%
@@ -230,40 +244,51 @@ export default function DashboardPage() {
                 })}
               </tbody>
             </table>
-          </DashboardCard>
+          )}
+        </DashboardCard>
 
-          <DashboardCard title="AI Insight of the Day" className="insight-card">
-            <div className="insight-header">
-              <h3>{dashboard.aiInsight.title}</h3>
-              <span className={`insight-badge${dashboard.aiInsight.isFallback ? "" : " insight-badge--live"}`}>
-                {insightSourceLabel(dashboard.aiInsight.isFallback)}
-              </span>
-            </div>
-            <p>{dashboard.aiInsight.content}</p>
-            <FeedbackButtons
-              sectionType="AI_INSIGHT"
-              itemId={dashboard.aiInsight.id}
-              prompt="Was this insight useful?"
-              vote={feedback[feedbackKey("AI_INSIGHT", dashboard.aiInsight.id)] ?? null}
-              submitting={!!feedbackSubmitting[feedbackKey("AI_INSIGHT", dashboard.aiInsight.id)]}
-              onVote={handleVote}
-            />
-          </DashboardCard>
+        <DashboardCard title="AI Insight of the Day" className="insight-card">
+          <div className="insight-header">
+            <h3>{dashboard.aiInsight.title}</h3>
+            <span className={`insight-badge${dashboard.aiInsight.isFallback ? "" : " insight-badge--live"}`}>
+              {insightSourceLabel(dashboard.aiInsight.isFallback)}
+            </span>
+          </div>
+          <p>{dashboard.aiInsight.content}</p>
+          <FeedbackButtons
+            sectionType="AI_INSIGHT"
+            itemId={dashboard.aiInsight.id}
+            prompt="Was this insight useful?"
+            vote={feedback[feedbackKey("AI_INSIGHT", dashboard.aiInsight.id)] ?? null}
+            submitting={!!feedbackSubmitting[feedbackKey("AI_INSIGHT", dashboard.aiInsight.id)]}
+            onVote={handleVote}
+          />
+        </DashboardCard>
 
-          <DashboardCard title="Fun Crypto Meme">
-            <p className="meme-title">{dashboard.meme.title}</p>
-            <img className="meme-image" src={dashboard.meme.imageUrl} alt={dashboard.meme.title} />
-            <FeedbackButtons
-              sectionType="MEME"
-              itemId={dashboard.meme.id}
-              prompt="Did this match your crypto mood?"
-              vote={feedback[feedbackKey("MEME", dashboard.meme.id)] ?? null}
-              submitting={!!feedbackSubmitting[feedbackKey("MEME", dashboard.meme.id)]}
-              onVote={handleVote}
+        <DashboardCard title="Fun Crypto Meme">
+          <p className="meme-title">{dashboard.meme.title}</p>
+          {memeImageFailed ? (
+            <div className="meme-image meme-image--placeholder">Image unavailable</div>
+          ) : (
+            <img
+              className="meme-image"
+              src={dashboard.meme.imageUrl}
+              alt={dashboard.meme.title}
+              onError={() => setMemeImageFailed(true)}
             />
-          </DashboardCard>
-        </div>
-      )}
+          )}
+          <p className="meme-caption">{dashboard.meme.caption}</p>
+          <span className="meme-badge">Static meme</span>
+          <FeedbackButtons
+            sectionType="MEME"
+            itemId={dashboard.meme.id}
+            prompt="Did this match your crypto mood?"
+            vote={feedback[feedbackKey("MEME", dashboard.meme.id)] ?? null}
+            submitting={!!feedbackSubmitting[feedbackKey("MEME", dashboard.meme.id)]}
+            onVote={handleVote}
+          />
+        </DashboardCard>
+      </div>
     </div>
   );
 }

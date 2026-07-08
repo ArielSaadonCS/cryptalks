@@ -178,7 +178,10 @@ class MemeItem(BaseModel):
 
     id: str
     title: str
+    caption: str
     image_url: str = Field(alias="imageUrl")
+    source: str
+    is_fallback: bool = Field(alias="isFallback")
 
 
 class DashboardResponse(BaseModel):

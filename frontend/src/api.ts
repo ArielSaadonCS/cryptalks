@@ -60,7 +60,10 @@ export interface AIInsightItem {
 export interface MemeItem {
   id: string;
   title: string;
+  caption: string;
   imageUrl: string;
+  source: string;
+  isFallback: boolean;
 }
 
 export interface DashboardData {
