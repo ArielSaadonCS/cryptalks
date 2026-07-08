@@ -337,10 +337,20 @@ curl -X POST http://localhost:8000/feedback \
   -H "Content-Type: application/json" \
   -d '{
     "sectionType": "AI_INSIGHT",
-    "itemId": "insight-today",
+    "itemId": "insight-30af3087fa9f",
     "vote": "UP"
   }'
 ```
+
+`itemId` values come from the corresponding item's `id` field in the
+`GET /dashboard/today` response — for the AI insight specifically, that id is
+a short hash of its actual text (`_insight_id()` in `integrations.py`), not a
+fixed string. This matters because the insight's wording changes whenever
+live price data moves: if the id were fixed (e.g. `"insight-today"`), a vote
+cast on one day's wording would silently "stick" to completely different
+wording later. Hashing the content means identical text reuses the same id
+(so a genuinely repeated insight keeps its vote), while different text gets a
+fresh id and starts unvoted.
 
 Voting again with the same `sectionType` + `itemId` updates the existing vote
 instead of creating a new row (enforced by a unique constraint on

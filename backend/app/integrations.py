@@ -572,6 +572,17 @@ def _deterministic_insight(
     return f"{lead}{news_note} For {investor_phrase}, this is the kind of move worth keeping on the radar alongside {risk_phrase}."
 
 
+def _insight_id(content: str) -> str:
+    """Derive the insight's feedback id from its actual text, not a fixed
+    string. The insight's wording changes whenever live price data moves
+    (which can be nearly every request), so a fixed id like "insight-today"
+    would make a vote on one day's wording silently stick to completely
+    different wording later. Identical content still reuses the same id, so
+    a genuinely repeated insight keeps its vote."""
+    digest = hashlib.sha256(content.encode()).hexdigest()[:12]
+    return f"insight-{digest}"
+
+
 def generate_ai_insight(
     preferences: UserPreferences,
     coin_prices: list[dict[str, object]],
@@ -591,17 +602,18 @@ def generate_ai_insight(
 
         if ai_content:
             return {
-                "id": "insight-today",
+                "id": _insight_id(ai_content),
                 "title": "Your personalized crypto context",
                 "content": ai_content,
                 "source": "openrouter",
                 "isFallback": False,
             }
 
+    fallback_content = _deterministic_insight(preferences, coin_prices, market_news)
     return {
-        "id": "insight-today",
+        "id": _insight_id(fallback_content),
         "title": "Your personalized crypto context",
-        "content": _deterministic_insight(preferences, coin_prices, market_news),
+        "content": fallback_content,
         "source": "deterministic",
         "isFallback": True,
     }
