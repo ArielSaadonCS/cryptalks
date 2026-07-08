@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -48,3 +48,14 @@ class Feedback(Base):
     item_id = Column(String, nullable=False)
     vote = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class CachedCoinPrice(Base):
+    __tablename__ = "cached_coin_prices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String, unique=True, index=True, nullable=False)
+    name = Column(String, nullable=False)
+    price_usd = Column(Float, nullable=False)
+    change_24h = Column(Float, nullable=True)
+    fetched_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

@@ -240,6 +240,22 @@ button.secondary:hover:not(:disabled) {
   font-size: 0.8rem;
 }
 
+.price-source {
+  margin-top: 3px;
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  color: #7a8194;
+}
+
+.price-source--live {
+  color: #1a8f4c;
+}
+
+.price-source--cache,
+.price-source--static {
+  color: #b7791f;
+}
+
 .price-table .positive {
   color: #1a8f4c;
   font-weight: 600;

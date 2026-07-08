@@ -43,6 +43,8 @@ export interface CoinPriceItem {
   name: string;
   priceUsd: number;
   change24h: number;
+  isFallback: boolean;
+  source: string;
 }
 
 export interface AIInsightItem {

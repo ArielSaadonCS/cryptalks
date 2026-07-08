@@ -157,6 +157,8 @@ class CoinPriceItem(BaseModel):
     name: str
     price_usd: float = Field(alias="priceUsd")
     change_24h: float = Field(alias="change24h")
+    is_fallback: bool = Field(alias="isFallback")
+    source: str
 
 
 class AIInsightItem(BaseModel):

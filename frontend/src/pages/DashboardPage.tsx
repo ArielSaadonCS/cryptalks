@@ -19,6 +19,19 @@ function feedbackKey(sectionType: SectionType, itemId: string): string {
   return `${sectionType}:${itemId}`;
 }
 
+function coinSourceLabel(source: string): string {
+  switch (source) {
+    case "live":
+      return "Live data";
+    case "cache":
+      return "Cached data";
+    case "static":
+      return "Fallback data";
+    default:
+      return "";
+  }
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const [preferences, setPreferences] = useState<Preferences | null>(null);
@@ -173,11 +186,16 @@ export default function DashboardPage() {
                     <tr key={coin.id}>
                       <td>
                         <strong>{coin.symbol}</strong> <span className="coin-name">{coin.name}</span>
+                        <div className={`price-source price-source--${coin.source}`}>
+                          {coinSourceLabel(coin.source)}
+                        </div>
                       </td>
-                      <td>${coin.priceUsd.toLocaleString()}</td>
+                      <td>
+                        ${coin.priceUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </td>
                       <td className={coin.change24h >= 0 ? "positive" : "negative"}>
                         {coin.change24h >= 0 ? "+" : ""}
-                        {coin.change24h}%
+                        {coin.change24h.toFixed(1)}%
                       </td>
                       <td>
                         <FeedbackButtons

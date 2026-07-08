@@ -1,13 +1,37 @@
-"""Mock/static data sources for the dashboard.
+"""External data sources for the dashboard.
 
-This phase does not call any real external APIs (CoinGecko, CryptoPanic,
-OpenRouter, etc.). Every function here returns deterministic, static data so
-the dashboard can be personalized without a network dependency.
+Coin prices are fetched live from CoinGecko when possible, with a PostgreSQL
+cache and a static fallback so the dashboard never fails just because the
+external API is slow or unavailable. Market news and memes are still
+mock/static data for this phase.
 """
 
-from app.models import UserPreferences
+from datetime import datetime, timezone
 
-COIN_METADATA: dict[str, dict[str, object]] = {
+import httpx
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.models import CachedCoinPrice, UserPreferences
+
+COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price"
+COINGECKO_TIMEOUT_SECONDS = 5.0
+
+COINGECKO_IDS: dict[str, str] = {
+    "BTC": "bitcoin",
+    "ETH": "ethereum",
+    "SOL": "solana",
+    "ADA": "cardano",
+    "XRP": "ripple",
+    "DOGE": "dogecoin",
+    "AVAX": "avalanche-2",
+    "LINK": "chainlink",
+    "MATIC": "matic-network",
+    "DOT": "polkadot",
+}
+
+# Final backup if both CoinGecko and the PostgreSQL cache are unavailable for an asset.
+STATIC_COIN_PRICES: dict[str, dict[str, object]] = {
     "BTC": {"name": "Bitcoin", "priceUsd": 65000.0, "change24h": 2.4},
     "ETH": {"name": "Ethereum", "priceUsd": 3400.0, "change24h": 1.1},
     "SOL": {"name": "Solana", "priceUsd": 145.0, "change24h": 5.6},
@@ -83,18 +107,100 @@ _RISK_NOTES = {
 }
 
 
-def build_coin_prices(assets: list[str]) -> list[dict[str, object]]:
-    return [
-        {
-            "id": f"price-{symbol}",
-            "symbol": symbol,
-            "name": COIN_METADATA[symbol]["name"],
-            "priceUsd": COIN_METADATA[symbol]["priceUsd"],
-            "change24h": COIN_METADATA[symbol]["change24h"],
+def _fetch_live_prices(symbols: list[str]) -> dict[str, dict[str, object]] | None:
+    """Try to fetch live prices from CoinGecko. Returns None on any failure."""
+    ids = [COINGECKO_IDS[symbol] for symbol in symbols if symbol in COINGECKO_IDS]
+    if not ids:
+        return None
+
+    params = {"ids": ",".join(ids), "vs_currencies": "usd", "include_24hr_change": "true"}
+    headers = {"x-cg-demo-api-key": settings.coingecko_api_key} if settings.coingecko_api_key else {}
+
+    try:
+        response = httpx.get(COINGECKO_URL, params=params, headers=headers, timeout=COINGECKO_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as exc:  # network errors, timeouts, bad JSON, non-2xx status, etc.
+        print(f"[integrations] CoinGecko request failed, falling back: {exc}")
+        return None
+
+    id_to_symbol = {coingecko_id: symbol for symbol, coingecko_id in COINGECKO_IDS.items()}
+    results: dict[str, dict[str, object]] = {}
+    for coingecko_id, values in data.items():
+        symbol = id_to_symbol.get(coingecko_id)
+        if symbol is None or "usd" not in values:
+            continue
+        results[symbol] = {
+            "name": STATIC_COIN_PRICES.get(symbol, {}).get("name", symbol),
+            "priceUsd": float(values["usd"]),
+            "change24h": float(values.get("usd_24h_change") or 0.0),
         }
-        for symbol in assets
-        if symbol in COIN_METADATA
-    ]
+
+    return results or None
+
+
+def _save_cached_prices(db: Session, live_prices: dict[str, dict[str, object]]) -> None:
+    fetched_at = datetime.now(timezone.utc)
+    for symbol, values in live_prices.items():
+        cached = db.query(CachedCoinPrice).filter(CachedCoinPrice.symbol == symbol).first()
+        if cached is None:
+            cached = CachedCoinPrice(symbol=symbol)
+            db.add(cached)
+        cached.name = values["name"]
+        cached.price_usd = values["priceUsd"]
+        cached.change_24h = values["change24h"]
+        cached.fetched_at = fetched_at
+    db.commit()
+
+
+def _get_cached_prices(db: Session, symbols: list[str]) -> dict[str, CachedCoinPrice]:
+    rows = db.query(CachedCoinPrice).filter(CachedCoinPrice.symbol.in_(symbols)).all()
+    return {row.symbol: row for row in rows}
+
+
+def _coin_price_item(symbol: str, name: str, price_usd: float, change_24h: float, is_fallback: bool, source: str) -> dict[str, object]:
+    return {
+        "id": f"price-{symbol}",
+        "symbol": symbol,
+        "name": name,
+        "priceUsd": price_usd,
+        "change24h": change_24h,
+        "isFallback": is_fallback,
+        "source": source,
+    }
+
+
+def get_coin_prices(assets: list[str], db: Session) -> list[dict[str, object]]:
+    """Return prices for the given assets: live from CoinGecko where possible,
+    otherwise the last cached price from PostgreSQL, otherwise static fallback
+    data. Only returns items for assets we actually support."""
+    symbols = [symbol.upper() for symbol in assets if symbol.upper() in COINGECKO_IDS]
+    if not symbols:
+        return []
+
+    live_prices = _fetch_live_prices(symbols) or {}
+    if live_prices:
+        _save_cached_prices(db, live_prices)
+
+    cached_prices = _get_cached_prices(db, symbols)
+
+    results: list[dict[str, object]] = []
+    for symbol in symbols:
+        if symbol in live_prices:
+            live = live_prices[symbol]
+            results.append(_coin_price_item(symbol, live["name"], live["priceUsd"], live["change24h"], False, "live"))
+        elif symbol in cached_prices:
+            cached = cached_prices[symbol]
+            results.append(
+                _coin_price_item(symbol, cached.name, cached.price_usd, cached.change_24h or 0.0, True, "cache")
+            )
+        elif symbol in STATIC_COIN_PRICES:
+            static = STATIC_COIN_PRICES[symbol]
+            results.append(
+                _coin_price_item(symbol, static["name"], static["priceUsd"], static["change24h"], True, "static")
+            )
+
+    return results
 
 
 def build_market_news(assets: list[str]) -> list[dict[str, object]]:
@@ -127,19 +233,22 @@ def build_ai_insight(preferences: UserPreferences, coin_prices: list[dict[str, o
     assets_text = ", ".join(preferences.assets)
     content_text = ", ".join(preferences.content_types)
 
+    all_live = bool(coin_prices) and all(item.get("source") == "live" for item in coin_prices)
+    dataset_label = "live" if all_live else "reference"
+
     movers = sorted(coin_prices, key=lambda item: item["change24h"], reverse=True)
     observations: list[str] = []
     if movers:
         top = movers[0]
         direction = "a positive" if top["change24h"] >= 0 else "a negative"
         observations.append(
-            f"{top['symbol']} is showing {direction} 24h move of {top['change24h']}% in this mock dataset."
+            f"{top['symbol']} is showing {direction} 24h move of {top['change24h']:.1f}% in this {dataset_label} dataset."
         )
     if len(movers) > 1 and movers[-1]["symbol"] != movers[0]["symbol"]:
         bottom = movers[-1]
         direction = "a positive" if bottom["change24h"] >= 0 else "a negative"
-        observations.append(f"{bottom['symbol']} shows {direction} 24h move of {bottom['change24h']}%.")
-    observation_text = " ".join(observations) if observations else "Mock market data is steady across the board today."
+        observations.append(f"{bottom['symbol']} shows {direction} 24h move of {bottom['change24h']:.1f}%.")
+    observation_text = " ".join(observations) if observations else "Market data is steady across the board today."
 
     risk_note = _RISK_NOTES.get(preferences.risk_level, "the briefing reflects your selected risk level")
 
