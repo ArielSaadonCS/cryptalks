@@ -358,8 +358,11 @@ calls OpenRouter or any other AI API directly; it only ever calls
    and a short summary of the user's feedback history (which sections/votes
    they've cast before — no complex analysis, just a one-line summary). The
    system prompt explicitly forbids financial advice, trading instructions, or
-   price predictions, and instructs the model to stay short (1–2 paragraphs)
-   and always state that this is not financial advice.
+   price predictions, and asks for a short (1–2 paragraph), natural-sounding
+   briefing — it's explicitly told *not* to explain its own reasoning ("because
+   you selected...") or append a disclaimer sentence, since the dashboard
+   already shows one separately; repeating it in the insight itself just reads
+   as robotic filler.
 3. **Safety check** — the raw model output is scanned for a fixed list of
    unsafe phrases (`"buy now"`, `"you should buy/sell/invest"`,
    `"guaranteed profit"`, `"will pump"`, `"will definitely rise/go up"`,
@@ -369,10 +372,13 @@ calls OpenRouter or any other AI API directly; it only ever calls
    substring matching, not a moderation model — if any phrase is found, the
    response is discarded and the deterministic fallback is used instead.
 4. **Fallback on any failure** — a missing key/model, a failed/timed-out
-   request, empty content, or unsafe content all silently fall back to the
-   deterministic insight (the same template used in earlier phases, now also
-   referencing a market news headline). Failures are logged as a backend
-   warning, never raised to the caller — `GET /dashboard/today` always returns
+   request, empty content, or unsafe content all silently fall back to a
+   deterministic insight: a short, templated note that leads with the
+   biggest coin move, mentions a relevant news headline, and closes with a
+   phrase tailored to the user's investor type and risk level — written as a
+   natural briefing line, not a recap of the user's own preferences or a
+   disclaimer. Failures are logged as a backend warning, never raised to the
+   caller — `GET /dashboard/today` always returns
    `200`.
 
 The response always includes `"source"` (`"openrouter"` or `"deterministic"`)

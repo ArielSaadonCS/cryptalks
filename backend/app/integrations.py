@@ -148,10 +148,18 @@ MOCK_MEMES: list[dict[str, object]] = [
     },
 ]
 
-_RISK_NOTES = {
-    "Low": "the briefing leans toward steadier, lower-volatility context",
-    "Medium": "the briefing balances steady context with notable market moves",
-    "High": "the briefing highlights more volatile market moves that may be relevant to a higher risk tolerance",
+_INVESTOR_PHRASES = {
+    "HODLer": "long-term holders",
+    "Day Trader": "day traders watching short-term moves",
+    "NFT Collector": "collectors keeping half an eye on the broader market",
+    "Beginner": "newer investors still getting a feel for the market",
+    "Researcher": "anyone digging into the underlying patterns",
+}
+
+_RISK_PHRASES = {
+    "Low": "steadier, lower-volatility context",
+    "Medium": "a mix of steady context and notable swings",
+    "High": "the kind of volatility that comes with a higher risk tolerance",
 }
 
 
@@ -337,16 +345,19 @@ def pick_meme(user_id: int) -> dict[str, object]:
 OPENROUTER_TIMEOUT_SECONDS = 10.0
 
 _AI_SYSTEM_PROMPT = (
-    "You are generating a personalized crypto market briefing for a dashboard. You must not "
-    "provide financial advice, investment instructions, trading signals, or price predictions. "
-    "Explain market context in a cautious and educational way. Do not tell the user to buy, sell, "
-    "hold, trade, enter, exit, or invest. Keep the answer short (1-2 short paragraphs) and useful. "
-    "Always make clear this is not financial advice."
+    "You are writing a short, engaging 'AI Insight of the Day' for a crypto dashboard. Write like "
+    "an interesting daily briefing, not a form letter: never explain why you're telling the user "
+    "this (do not say things like 'because you selected' or 'you described yourself as'), and do "
+    "not add a financial-advice disclaimer sentence — the app already shows one separately, so "
+    "repeating it would be redundant. "
+    "You must not provide financial advice, investment instructions, trading signals, or price "
+    "predictions. Do not tell the user to buy, sell, hold, trade, enter, exit, or invest. Keep it "
+    "to 1-2 short, natural-sounding paragraphs."
 )
 
 # Post-generation safety net for the live path. Deliberately checks for "is financial advice"
-# rather than the bare phrase, since the model is expected (and allowed) to say the safe,
-# negated version of this ("this is not financial advice") as its closing disclaimer.
+# rather than the bare phrase, so that if the model still mentions financial advice at all, only
+# an affirmative claim ("this is financial advice") is flagged, not a safe negated one.
 _UNSAFE_PHRASES = [
     "buy now",
     "you should buy",
@@ -421,10 +432,11 @@ def _build_ai_context(
 
 def _build_user_prompt(context: str) -> str:
     return (
-        "Create a short 'AI Insight of the Day' for this user based on the following structured "
-        "context. Explain what is happening, why it may matter, and why it is relevant to the "
-        "user's selected assets or investor type. Include a risk-aware note. Do not provide "
-        "financial advice.\n\n" + context
+        "Using the structured context below, write a short, interesting AI Insight of the Day. "
+        "Describe what's happening in the market in a natural, narrative style, and weave in why "
+        "it might matter for this kind of investor without explicitly listing their preferences "
+        "back to them or explaining your reasoning. Do not provide financial advice and do not add "
+        "a disclaimer sentence.\n\n" + context
     )
 
 
@@ -464,38 +476,29 @@ def _deterministic_insight(
     coin_prices: list[dict[str, object]],
     market_news: list[dict[str, object]],
 ) -> str:
-    assets_text = ", ".join(preferences.assets)
-    content_text = ", ".join(preferences.content_types)
-
-    all_live = bool(coin_prices) and all(item.get("source") == "live" for item in coin_prices)
-    dataset_label = "live" if all_live else "reference"
-
     movers = sorted(coin_prices, key=lambda item: item["change24h"], reverse=True)
-    observations: list[str] = []
+
     if movers:
         top = movers[0]
-        direction = "a positive" if top["change24h"] >= 0 else "a negative"
-        observations.append(
-            f"{top['symbol']} is showing {direction} 24h move of {top['change24h']:.1f}% in this {dataset_label} dataset."
-        )
-    if len(movers) > 1 and movers[-1]["symbol"] != movers[0]["symbol"]:
-        bottom = movers[-1]
-        direction = "a positive" if bottom["change24h"] >= 0 else "a negative"
-        observations.append(f"{bottom['symbol']} shows {direction} 24h move of {bottom['change24h']:.1f}%.")
-    observation_text = " ".join(observations) if observations else "Market data is steady across the board today."
+        lead = f"{top['symbol']} is {'up' if top['change24h'] >= 0 else 'down'} {abs(top['change24h']):.1f}% over the last 24 hours"
+        if len(movers) > 1 and movers[-1]["symbol"] != top["symbol"]:
+            bottom = movers[-1]
+            lead += (
+                f", while {bottom['symbol']} is {'up' if bottom['change24h'] >= 0 else 'down'} "
+                f"{abs(bottom['change24h']):.1f}%"
+            )
+        lead += "."
+    else:
+        lead = "Markets are holding fairly steady across your selected assets today."
 
     news_note = ""
     if market_news:
-        news_note = f' Today\'s briefing also references coverage like "{market_news[0]["title"]}".'
+        news_note = f' Meanwhile, "{market_news[0]["title"]}" is part of today\'s broader conversation.'
 
-    risk_note = _RISK_NOTES.get(preferences.risk_level, "the briefing reflects your selected risk level")
+    investor_phrase = _INVESTOR_PHRASES.get(preferences.investor_type, "investors like you")
+    risk_phrase = _RISK_PHRASES.get(preferences.risk_level, "your selected risk level")
 
-    return (
-        f"Because you selected {assets_text} and described yourself as a {preferences.investor_type}, "
-        f"today's briefing focuses on content like {content_text}. {observation_text}{news_note} "
-        f"Given your {preferences.risk_level} risk level, {risk_note}. "
-        "This may be useful context, but Cryptalks does not provide financial advice or trading recommendations."
-    )
+    return f"{lead}{news_note} For {investor_phrase}, this is the kind of move worth keeping on the radar alongside {risk_phrase}."
 
 
 def generate_ai_insight(
