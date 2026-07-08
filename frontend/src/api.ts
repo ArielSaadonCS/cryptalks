@@ -14,7 +14,29 @@ export interface AuthResponse {
   user: User;
 }
 
-export class ApiError extends Error {}
+export interface Preferences {
+  assets: string[];
+  investorType: string;
+  contentTypes: string[];
+  riskLevel: string;
+  onboardingCompleted: boolean;
+}
+
+export interface PreferencesInput {
+  assets: string[];
+  investorType: string;
+  contentTypes: string[];
+  riskLevel: string;
+}
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -59,7 +81,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, { ...options, headers });
 
   if (!response.ok) {
-    throw new ApiError(await extractErrorMessage(response));
+    throw new ApiError(await extractErrorMessage(response), response.status);
   }
 
   return response.json() as Promise<T>;
@@ -81,4 +103,15 @@ export function login(email: string, password: string): Promise<AuthResponse> {
 
 export function getMe(): Promise<User> {
   return request<User>("/auth/me");
+}
+
+export function getPreferences(): Promise<Preferences> {
+  return request<Preferences>("/preferences/me");
+}
+
+export function savePreferences(preferences: PreferencesInput): Promise<Preferences> {
+  return request<Preferences>("/preferences/me", {
+    method: "PUT",
+    body: JSON.stringify(preferences),
+  });
 }

@@ -12,9 +12,11 @@ This repository currently implements:
   and exposing onboarding status.
 - **Phase 3** – React frontend foundation: signup/login pages, protected routing,
   token handling, and placeholder onboarding/dashboard pages.
+- **Phase 4** – real onboarding form: a preferences form wired to the backend, with a
+  dashboard that summarizes the saved preferences.
 
-Later modules (the real onboarding form, the real dashboard, feedback, external market
-data) are not part of this phase.
+Later modules (the full dashboard, feedback, external market data) are not part of
+this phase.
 
 ## Project structure
 
@@ -42,8 +44,8 @@ cryptalks/
 │   │   └── pages/
 │   │       ├── LoginPage.tsx
 │   │       ├── SignupPage.tsx
-│   │       ├── OnboardingPage.tsx  # Placeholder for this phase
-│   │       └── DashboardPage.tsx   # Placeholder for this phase
+│   │       ├── OnboardingPage.tsx  # Real preferences form, wired to the backend
+│   │       └── DashboardPage.tsx   # Placeholder; shows saved preference summary
 │   ├── package.json
 │   ├── .env.example
 │   └── Dockerfile
@@ -197,24 +199,46 @@ The access token is stored in `localStorage`. `ProtectedRoute` validates it agai
 `GET /auth/me` on each protected navigation and redirects to `/login` if it's missing
 or invalid.
 
+### Onboarding form
+
+`/onboarding` is a real form wired to the backend, not a placeholder:
+
+- **Which crypto assets are you interested in?** — checkboxes (`BTC`, `ETH`, `SOL`,
+  `ADA`, `XRP`, `DOGE`, `AVAX`, `LINK`, `MATIC`, `DOT`)
+- **What type of investor are you?** — radio buttons (`HODLer`, `Day Trader`,
+  `NFT Collector`, `Beginner`, `Researcher`)
+- **What kind of content would you like to see?** — checkboxes (`Market News`,
+  `Charts`, `AI Insights`, `Fun`)
+- **What is your risk level?** — radio buttons (`Low`, `Medium`, `High`)
+
+On mount it calls `GET /preferences/me` to pre-fill the form if preferences already
+exist (a plain 404 just means an empty form — no error is shown for that case). On
+submit it validates that every section has a selection, then calls
+`PUT /preferences/me`; the button shows a saving state and is disabled while the
+request is in flight. A successful save redirects to `/dashboard`; a backend
+validation error is shown inline instead. Preferences are never faked client-side —
+the backend is always the source of truth for `onboardingCompleted`.
+
+`/dashboard` calls `GET /preferences/me` and renders a short summary (assets,
+investor type, content types, risk level) above the disclaimer.
+
 ### Manual test flow
 
 1. Open **http://localhost:5173** — you land on `/login`.
-2. Go to **Sign up**, create an account. On success you're redirected to `/onboarding`
-   (a placeholder page for this phase — the real onboarding form comes in the next phase).
-3. Click **"Continue to dashboard demo"**. Since onboarding hasn't actually been
-   completed on the backend yet, `ProtectedRoute` re-validates against `GET /auth/me`
-   and sends you straight back to `/onboarding` — the button does not fake completion,
-   and the guard does not trust the click alone.
-4. Complete onboarding for real, e.g. via Swagger UI or curl (see `PUT /preferences/me`
-   above) using the access token from `localStorage` (`cryptalks_token`). Click
-   **"Continue to dashboard demo"** again — this time it succeeds and the placeholder
-   dashboard renders with the disclaimer.
+2. Go to **Sign up**, create an account. On success you're redirected to `/onboarding`.
+3. Fill out the onboarding form (pick at least one asset, an investor type, at least
+   one content type, and a risk level) and submit.
+4. On success you're redirected to `/dashboard`, which now shows a summary of the
+   preferences you just saved, plus the disclaimer.
 5. Click **Log out** — you're sent back to `/login` and the token is cleared from
    `localStorage`.
 6. **Log in** again with the same credentials — since onboarding is now genuinely
-   complete, you're redirected straight to `/dashboard`.
+   complete (`GET /auth/me` returns `onboardingCompleted: true`), you're redirected
+   straight to `/dashboard` without seeing the form again. Manually visiting
+   `/onboarding` at this point redirects back to `/dashboard`.
 
 Backend error handling can also be checked from the UI: logging in with a wrong
-password shows a clean "Invalid email or password" message, and signing up with a
-weak password (e.g. `weak`) surfaces the backend's password policy error inline.
+password shows a clean "Invalid email or password" message, signing up with a weak
+password (e.g. `weak`) surfaces the backend's password policy error inline, and
+submitting the onboarding form with a section left empty shows a clear validation
+message without calling the backend.
