@@ -290,9 +290,27 @@ button.secondary:hover:not(:disabled) {
   background: #eef1ff;
 }
 
+.insight-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
 .insight-card h3 {
-  margin: 0 0 10px;
+  margin: 0;
   font-size: 1rem;
+}
+
+.insight-badge {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  color: #b7791f;
+}
+
+.insight-badge--live {
+  color: #1a8f4c;
 }
 
 .insight-card p {

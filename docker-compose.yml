@@ -26,6 +26,8 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: 60
       COINGECKO_API_KEY: ""
       CRYPTOPANIC_API_KEY: ""
+      OPENROUTER_API_KEY: ""
+      OPENROUTER_MODEL: ""
     ports:
       - "8000:8000"
     depends_on:

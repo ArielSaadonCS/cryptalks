@@ -53,6 +53,8 @@ export interface AIInsightItem {
   id: string;
   title: string;
   content: string;
+  source: string;
+  isFallback: boolean;
 }
 
 export interface MemeItem {

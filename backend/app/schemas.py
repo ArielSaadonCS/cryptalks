@@ -164,9 +164,13 @@ class CoinPriceItem(BaseModel):
 
 
 class AIInsightItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: str
     title: str
     content: str
+    source: str
+    is_fallback: bool = Field(alias="isFallback")
 
 
 class MemeItem(BaseModel):

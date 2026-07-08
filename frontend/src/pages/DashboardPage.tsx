@@ -23,6 +23,10 @@ function newsSourceLabel(isFallback: boolean): string {
   return isFallback ? "Fallback news" : "Live news";
 }
 
+function insightSourceLabel(isFallback: boolean): string {
+  return isFallback ? "Fallback insight" : "AI-generated insight";
+}
+
 function coinSourceLabel(source: string): string {
   switch (source) {
     case "live":
@@ -229,7 +233,12 @@ export default function DashboardPage() {
           </DashboardCard>
 
           <DashboardCard title="AI Insight of the Day" className="insight-card">
-            <h3>{dashboard.aiInsight.title}</h3>
+            <div className="insight-header">
+              <h3>{dashboard.aiInsight.title}</h3>
+              <span className={`insight-badge${dashboard.aiInsight.isFallback ? "" : " insight-badge--live"}`}>
+                {insightSourceLabel(dashboard.aiInsight.isFallback)}
+              </span>
+            </div>
             <p>{dashboard.aiInsight.content}</p>
             <FeedbackButtons
               sectionType="AI_INSIGHT"
