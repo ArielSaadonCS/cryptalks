@@ -56,13 +56,25 @@ MAX_NEWS_ITEMS = 4
 
 # Final backup if CRYPTOPANIC_API_KEY is missing, the request fails, or it
 # doesn't return enough useful results.
+# Long-form demo copy: fake, clearly-labeled ("Static Fallback") articles used
+# only when CryptoPanic isn't configured. Written at real-article length so the
+# "Read full article" modal has something substantial to show, not a one-liner.
 STATIC_NEWS: list[dict[str, object]] = [
     {
         "id": "fallback-news-btc-1",
         "title": "Bitcoin remains central to market attention",
         "summary": (
-            "Bitcoin continues to be one of the most closely watched assets in the crypto market. "
-            "This is general market context, not a trading recommendation."
+            "Bitcoin continues to be one of the most closely watched assets in the crypto market, "
+            "with its price action often setting the tone for the broader sector. Analysts across "
+            "the space point to a mix of macroeconomic conditions, institutional flows, and on-chain "
+            "activity as the main threads shaping sentiment this week.\n\n"
+            "Trading volume has remained elevated across major exchanges, and long-term holders "
+            "continue to make up a significant share of circulating supply — a pattern many market "
+            "watchers view as a sign of conviction rather than short-term speculation. Discussion "
+            "around Bitcoin's role as a macro hedge also continues to resurface whenever traditional "
+            "markets show volatility.\n\n"
+            "This is general market context, not a trading recommendation. Conditions can shift "
+            "quickly, and past patterns are not a guarantee of future behavior."
         ),
         "source": "Static Fallback",
         "relatedAssets": ["BTC"],
@@ -74,7 +86,15 @@ STATIC_NEWS: list[dict[str, object]] = [
         "title": "Ethereum network activity stays in focus",
         "summary": (
             "Ethereum's network usage and developer activity remain a common reference point for "
-            "investors watching the broader ecosystem."
+            "investors watching the broader ecosystem, with the chain continuing to host the largest "
+            "share of decentralized applications, stablecoin activity, and on-chain value of any "
+            "smart contract platform.\n\n"
+            "Layer-2 scaling networks built on top of Ethereum have kept gas fees on the base layer "
+            "relatively predictable, while developer tooling and documentation continue to mature. "
+            "Several ecosystem projects have highlighted incremental protocol improvements aimed at "
+            "efficiency and scalability rather than any single dramatic overhaul.\n\n"
+            "None of this should be read as a signal to buy or sell — it's simply a snapshot of "
+            "where attention in the ecosystem is currently concentrated."
         ),
         "source": "Static Fallback",
         "relatedAssets": ["ETH"],
@@ -86,7 +106,15 @@ STATIC_NEWS: list[dict[str, object]] = [
         "title": "Solana ecosystem continues to draw developer interest",
         "summary": (
             "Solana's ecosystem has seen continued project activity, a trend investors are watching "
-            "as part of broader market context."
+            "as part of broader market context. The network's throughput and low transaction costs "
+            "continue to attract builders experimenting with consumer-facing applications, gaming, "
+            "and payments use cases.\n\n"
+            "Community discussion has also centered on network stability improvements following past "
+            "periods of congestion, with several infrastructure upgrades proposed or already rolled "
+            "out by core contributors. Total value locked across Solana-based protocols has "
+            "fluctuated alongside the broader market rather than moving independently.\n\n"
+            "As with any ecosystem still iterating quickly, activity levels can change from week to "
+            "week, and this summary reflects general context rather than a recommendation."
         ),
         "source": "Static Fallback",
         "relatedAssets": ["SOL"],
@@ -97,8 +125,17 @@ STATIC_NEWS: list[dict[str, object]] = [
         "id": "fallback-news-general-1",
         "title": "Crypto markets show mixed movement today",
         "summary": (
-            "Major assets moved in different directions today, reflecting a lack of a single dominant "
-            "market theme. This may be relevant context for your briefing."
+            "Major assets moved in different directions today, reflecting a lack of a single "
+            "dominant market theme. Rather than a broad risk-on or risk-off move, trading desks have "
+            "described the session as \"rotational,\" with capital shifting between sectors of the "
+            "market rather than flowing uniformly in or out.\n\n"
+            "Some analysts point to thinner-than-usual trading volume as a contributing factor, which "
+            "can amplify price swings on both sides without necessarily reflecting a change in "
+            "longer-term positioning. Others note that mixed macro signals — from interest rate "
+            "expectations to broader risk appetite — have left traders without a clear consensus to "
+            "trade around.\n\n"
+            "This may be relevant context for your briefing, but it isn't a signal to act on any "
+            "particular asset."
         ),
         "source": "Static Fallback",
         "relatedAssets": [],
@@ -110,7 +147,16 @@ STATIC_NEWS: list[dict[str, object]] = [
         "title": "Regulatory developments remain a key risk factor",
         "summary": (
             "Regulatory news continues to be one of the most closely watched risk factors for crypto "
-            "investors, underscoring the value of staying risk-aware."
+            "investors, underscoring the value of staying risk-aware. Jurisdictions around the world "
+            "continue to take different approaches to digital asset oversight, from clearer licensing "
+            "frameworks in some regions to more cautious, enforcement-driven postures in others.\n\n"
+            "Market participants have generally welcomed greater regulatory clarity where it has "
+            "emerged, viewing it as a precondition for more institutional participation over time — "
+            "even when the specific rules themselves add near-term compliance overhead. Ongoing "
+            "discussions about stablecoin oversight and exchange licensing remain some of the most "
+            "closely tracked threads in this space.\n\n"
+            "Regulatory developments can shift quickly and vary significantly by region, so this is "
+            "offered as general awareness rather than guidance specific to any jurisdiction."
         ),
         "source": "Static Fallback",
         "relatedAssets": [],
@@ -122,7 +168,15 @@ STATIC_NEWS: list[dict[str, object]] = [
         "title": "Market sentiment stays mixed among investors",
         "summary": (
             "Investor sentiment surveys show a mixed outlook this week, with no strong consensus "
-            "emerging in either direction."
+            "emerging in either direction. Retail-focused sentiment indices and derivatives "
+            "positioning data both point to a market that is neither broadly euphoric nor broadly "
+            "fearful — a contrast to the sharper swings seen during past cycles.\n\n"
+            "Some commentators read this kind of equilibrium as a sign of a maturing market with a "
+            "broader base of participants and more diverse time horizons. Others caution that "
+            "sentiment can turn quickly once a clear catalyst emerges, whether from macro data, a "
+            "major protocol event, or a shift in regulatory posture.\n\n"
+            "However you read it, sentiment data is just one input among many, and shouldn't be "
+            "treated as a standalone signal."
         ),
         "source": "Static Fallback",
         "relatedAssets": [],

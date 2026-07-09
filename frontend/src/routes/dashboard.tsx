@@ -233,13 +233,16 @@ function DashboardPage() {
 
         {/* Grid */}
         <section className="mt-6 grid gap-6 lg:grid-cols-3">
-          {/* Market news — spans 2 cols */}
+          {/* News + Meme stack in a main column; Market Signals is a sidebar
+              next to it. Whichever of the three are actually shown, the
+              column spans adjust so there's never a dangling empty cell. */}
+          {(showMarketNews || showFun) && (
+          <div className={cn("space-y-6", showCharts ? "lg:col-span-2" : "lg:col-span-3")}>
           {showMarketNews && (
           <SectionCard
             title="Personalized News"
             icon={<Newspaper className="h-5 w-5" />}
             accent="cyan"
-            className="lg:col-span-2"
           >
             {dashboard.marketNews.length === 0 ? (
               <EmptyState label="No news right now." />
@@ -307,63 +310,69 @@ function DashboardPage() {
           </SectionCard>
           )}
 
-          {expandedNewsItem && (
-            <div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-              onClick={() => setExpandedNewsId(null)}
-            >
-              <div
-                className="glass relative max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl p-6 sm:p-8"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  onClick={() => setExpandedNewsId(null)}
-                  aria-label="Close"
-                  className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full border border-border/60 bg-secondary/40 transition hover:bg-secondary"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-                <span className={cn(
-                  "inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-                  expandedNewsItem.isFallback ? "bg-amber/15 text-amber" : "bg-emerald/15 text-emerald",
-                )}>
-                  {expandedNewsItem.isFallback ? "Fallback" : "Live"}
-                </span>
-                <h2 className="mt-4 pr-10 text-2xl font-bold leading-tight">{expandedNewsItem.title}</h2>
-                <p className="mt-4 text-base leading-relaxed text-muted-foreground">{expandedNewsItem.summary}</p>
-                <div className="mt-5 flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                    {expandedNewsItem.source}
-                  </span>
-                  {expandedNewsItem.relatedAssets.map((a) => (
-                    <span key={a} className="rounded-md bg-cyan/10 px-1.5 py-0.5 font-mono text-xs font-semibold text-cyan">
-                      {a}
-                    </span>
-                  ))}
-                </div>
-                {expandedNewsItem.url && (
-                  <a
-                    href={expandedNewsItem.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-6 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110"
-                    style={{ background: "var(--gradient-aurora)" }}
+          {/* Meme */}
+          {showFun && (
+          <SectionCard
+            title="Crypto Meme"
+            icon={<Smile className="h-5 w-5" />}
+            accent="amber"
+          >
+            <div className="grid gap-4 sm:grid-cols-[220px_1fr]">
+              <div className="relative aspect-square overflow-hidden rounded-xl border border-border/60 bg-secondary/50">
+                {memeFailed ? (
+                  <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
+                    <ImageOff className="h-6 w-6" />
+                    <span className="text-xs">Image unavailable</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setMemeExpanded(true)}
+                    aria-label="View larger meme"
+                    className="group relative h-full w-full cursor-zoom-in"
                   >
-                    Read original article <ExternalLink className="h-4 w-4" />
-                  </a>
+                    <img
+                      src={dashboard.meme.imageUrl}
+                      alt={dashboard.meme.title}
+                      onError={() => setMemeFailed(true)}
+                      className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
+                    />
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/40 group-hover:opacity-100">
+                      <ZoomIn className="h-6 w-6 text-white" />
+                    </span>
+                  </button>
                 )}
               </div>
+              <div className="flex flex-col">
+                <h3 className="text-lg font-semibold">{dashboard.meme.title}</h3>
+                <span className="mt-3 inline-block w-fit rounded-full bg-amber/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber">
+                  Static meme
+                </span>
+                <div className="mt-auto">
+                  <FeedbackButtons
+                    sectionType="MEME"
+                    itemId={dashboard.meme.id}
+                    prompt="Did this match your mood?"
+                    vote={feedback[feedbackKey("MEME", dashboard.meme.id)] ?? null}
+                    submitting={!!feedbackSubmitting[feedbackKey("MEME", dashboard.meme.id)]}
+                    onVote={handleVote}
+                  />
+                </div>
+              </div>
             </div>
+          </SectionCard>
+          )}
+          </div>
           )}
 
-          {/* Coin prices */}
+          {/* Coin prices — sidebar next to News/Meme, or full width alone */}
           {showCharts && (
           <SectionCard
             title="Market Signals"
             eyebrow="24h movement"
             icon={<LineChart className="h-5 w-5" />}
             accent="emerald"
+            className={cn(!(showMarketNews || showFun) && "lg:col-span-3")}
           >
             {dashboard.coinPrices.length === 0 ? (
               <EmptyState label="No price data right now." />
@@ -417,85 +426,79 @@ function DashboardPage() {
             )}
           </SectionCard>
           )}
+        </section>
 
-          {/* Meme */}
-          {showFun && (
-          <>
-          <SectionCard
-            title="Crypto Meme"
-            icon={<Smile className="h-5 w-5" />}
-            accent="amber"
-            className="lg:col-span-2"
+        {expandedNewsItem && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+            onClick={() => setExpandedNewsId(null)}
           >
-            <div className="grid gap-4 sm:grid-cols-[220px_1fr]">
-              <div className="relative aspect-square overflow-hidden rounded-xl border border-border/60 bg-secondary/50">
-                {memeFailed ? (
-                  <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
-                    <ImageOff className="h-6 w-6" />
-                    <span className="text-xs">Image unavailable</span>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setMemeExpanded(true)}
-                    aria-label="View larger meme"
-                    className="group relative h-full w-full cursor-zoom-in"
-                  >
-                    <img
-                      src={dashboard.meme.imageUrl}
-                      alt={dashboard.meme.title}
-                      onError={() => setMemeFailed(true)}
-                      className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
-                    />
-                    <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/40 group-hover:opacity-100">
-                      <ZoomIn className="h-6 w-6 text-white" />
-                    </span>
-                  </button>
-                )}
-              </div>
-              <div className="flex flex-col">
-                <h3 className="text-lg font-semibold">{dashboard.meme.title}</h3>
-                <span className="mt-3 inline-block w-fit rounded-full bg-amber/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber">
-                  Static meme
-                </span>
-                <div className="mt-auto">
-                  <FeedbackButtons
-                    sectionType="MEME"
-                    itemId={dashboard.meme.id}
-                    prompt="Did this match your mood?"
-                    vote={feedback[feedbackKey("MEME", dashboard.meme.id)] ?? null}
-                    submitting={!!feedbackSubmitting[feedbackKey("MEME", dashboard.meme.id)]}
-                    onVote={handleVote}
-                  />
-                </div>
-              </div>
-            </div>
-          </SectionCard>
-
-          {memeExpanded && !memeFailed && (
             <div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-              onClick={() => setMemeExpanded(false)}
+              className="glass relative max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl p-6 sm:p-8"
+              onClick={(e) => e.stopPropagation()}
             >
               <button
                 type="button"
-                onClick={() => setMemeExpanded(false)}
+                onClick={() => setExpandedNewsId(null)}
                 aria-label="Close"
-                className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
+                className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full border border-border/60 bg-secondary/40 transition hover:bg-secondary"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4" />
               </button>
-              <img
-                src={dashboard.meme.imageUrl}
-                alt={dashboard.meme.title}
-                onClick={(e) => e.stopPropagation()}
-                className="max-h-[85vh] max-w-full rounded-2xl object-contain shadow-2xl"
-              />
+              <span className={cn(
+                "inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                expandedNewsItem.isFallback ? "bg-amber/15 text-amber" : "bg-emerald/15 text-emerald",
+              )}>
+                {expandedNewsItem.isFallback ? "Fallback" : "Live"}
+              </span>
+              <h2 className="mt-4 pr-10 text-2xl font-bold leading-tight">{expandedNewsItem.title}</h2>
+              <p className="mt-4 whitespace-pre-line text-base leading-relaxed text-muted-foreground">{expandedNewsItem.summary}</p>
+              <div className="mt-5 flex flex-wrap items-center gap-2">
+                <span className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                  {expandedNewsItem.source}
+                </span>
+                {expandedNewsItem.relatedAssets.map((a) => (
+                  <span key={a} className="rounded-md bg-cyan/10 px-1.5 py-0.5 font-mono text-xs font-semibold text-cyan">
+                    {a}
+                  </span>
+                ))}
+              </div>
+              {expandedNewsItem.url && (
+                <a
+                  href={expandedNewsItem.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-6 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110"
+                  style={{ background: "var(--gradient-aurora)" }}
+                >
+                  Read original article <ExternalLink className="h-4 w-4" />
+                </a>
+              )}
             </div>
-          )}
-          </>
-          )}
-        </section>
+          </div>
+        )}
+
+        {memeExpanded && !memeFailed && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+            onClick={() => setMemeExpanded(false)}
+          >
+            <button
+              type="button"
+              onClick={() => setMemeExpanded(false)}
+              aria-label="Close"
+              className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <img
+              src={dashboard.meme.imageUrl}
+              alt={dashboard.meme.title}
+              onClick={(e) => e.stopPropagation()}
+              className="max-h-[85vh] max-w-full rounded-2xl object-contain shadow-2xl"
+            />
+          </div>
+        )}
 
         <p className="mt-10 max-w-3xl text-center text-xs text-muted-foreground mx-auto">
           Cryptalks provides market context and educational summaries only. It does not provide
