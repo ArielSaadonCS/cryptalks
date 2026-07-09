@@ -9,14 +9,21 @@ interface Props {
   submitting: boolean;
   onVote: (sectionType: SectionType, itemId: string, vote: Vote) => void;
   prompt?: string;
+  /** Use light prompt text for cards with a bright/colored background (e.g. the
+   * AI Insight gradient card), where the default muted gray is unreadable. */
+  onLightBackground?: boolean;
 }
 
-export function FeedbackButtons({ sectionType, itemId, vote, submitting, onVote, prompt }: Props) {
+export function FeedbackButtons({ sectionType, itemId, vote, submitting, onVote, prompt, onLightBackground }: Props) {
   const btn =
     "group relative flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-secondary/40 text-muted-foreground transition-all duration-200 hover:scale-110 hover:border-primary/40 disabled:opacity-50 disabled:hover:scale-100";
   return (
-    <div className="mt-4 flex items-center gap-2 pt-3 border-t border-border/50">
-      {prompt && <span className="text-xs text-muted-foreground mr-auto">{prompt}</span>}
+    <div className={cn("mt-4 flex items-center gap-2 pt-3 border-t", onLightBackground ? "border-white/20" : "border-border/50")}>
+      {prompt && (
+        <span className={cn("text-xs mr-auto", onLightBackground ? "text-white/80" : "text-muted-foreground")}>
+          {prompt}
+        </span>
+      )}
       <button
         type="button"
         disabled={submitting}
