@@ -2,8 +2,7 @@
 
 Cryptalks is an AI-powered, personalized crypto briefing dashboard. It combines
 onboarding preferences, live crypto prices, market news, an AI-generated daily
-insight, a light meme, and thumbs up/down feedback voting into one daily
-briefing per user.
+insight and light meme into one daily briefing per user.
 
 > **Product positioning:** Cryptalks provides educational market context only.
 > It is **not** a trading prediction app. It does not provide financial advice,
@@ -22,7 +21,7 @@ briefing per user.
   feedback, content-type gating, etc.) runs exactly as in local dev.
 - **DB access for review:** a read-only Postgres role (`cryptalks_reviewer`,
   `SELECT`-only on all tables, cannot write or drop anything) has been
-  created for inspection. Its connection string is deliberately **not**
+  created for inspection. Its connection string is deliberately not
   included in this public repo — it's provided directly in the assignment
   submission instead.
 
@@ -39,8 +38,9 @@ briefing per user.
 - Real market news from CryptoPanic (optional API key), with static fallback
   news when no key is configured or the request fails
 - An AI Insight of the Day from OpenRouter (optional API key + model), with a
-  deterministic fallback insight and a keyword-based safety filter that
-  discards any unsafe/financial-advice-flavored output
+  deterministic fallback insight and a keyword based safety filter that
+  discards any unsafe/financial-advice-flavored output. (In the public deployment,
+   the fallback insight may be shown intentionally to avoid exposing the OpenRouter API key publicly.)
 - A dynamic daily meme, chosen deterministically per user per day from a
   static catalog of real meme images (no external API, no database table)
   with a click-to-enlarge lightbox view
@@ -58,7 +58,7 @@ briefing per user.
 **Frontend:** React 19, TypeScript, Vite, TanStack Router (client-only, file-based
 routing), Tailwind CSS v4, `lucide-react` icons (no Redux, no component library)
 
-**Backend:** FastAPI, SQLAlchemy, PostgreSQL, JWT (`python-jose`), `bcrypt`
+**Backend:** Python, FastAPI, SQLAlchemy, PostgreSQL, JWT (`python-jose`), `bcrypt`
 (via `passlib`), `httpx` for outbound calls to CoinGecko / CryptoPanic /
 OpenRouter
 
@@ -83,8 +83,8 @@ small, single-responsibility modules rather than separate services:
   (CoinGecko, CryptoPanic, OpenRouter), each with its own cache/fallback
   strategy; the rest of the backend never calls an external API directly
 
-The frontend only ever calls the FastAPI backend — it never calls CoinGecko,
-CryptoPanic, or OpenRouter directly, and never receives or uses any
+The frontend only ever calls the FastAPI backend — it never calls the
+external APIs directly, and never receives or uses any
 third-party API key.
 
 ## Environment variables
@@ -243,88 +243,7 @@ logic, not a ranking or ML model:
 
 There is still no ranking model, ML training, or fine-tuning anywhere in the
 codebase — every rule above is hand-written exclusion/replacement logic, not
-a recommendation engine. See "Suggested approach to future model training"
-below for how the same `feedback` table could actually be used to train one.
-
-## Suggested approach to future model training
-
-The task calls for a suggestion here, not an implementation — this section is
-a proposal for how the `feedback` table already being populated could
-eventually train a real ranking model, without changing anything in the
-current codebase.
-
-**What's already being captured.** Every vote is a row of
-`(user_id, section_type, item_id, vote, created_at)`, alongside each user's
-declared `(assets, investor_type, content_types, risk_level)` in
-`user_preferences`. That's already most of what a first model needs: a
-user, an item, a label, and a timestamp. The one gap is that item
-*content* isn't stored — `item_id` for news/memes is a stable catalog key,
-but the AI insight's id is a hash of text that's never persisted verbatim.
-A training pipeline would need to log the actual content shown alongside
-each feedback event (e.g. a lightweight `served_items` table recording what
-was shown, when, to whom, before voting), so features can be computed from
-what the user actually saw, not just an id.
-
-**Framing the problem.** This isn't really "one model" — the four sections
-are different enough (a ranked list of news items vs. a single generated
-insight vs. one meme pick) that they're better treated as related but
-separate ranking problems sharing the same feature space, rather than one
-model doing everything. For News, Meme, and Coin Price sections, a natural
-framing is binary classification: "given this user and this candidate item,
-will they upvote it?" scored per-candidate, with the dashboard showing the
-highest-scoring items instead of today's hand-written rules. For the AI
-insight, feedback is better used as a signal for *prompt selection/tuning*
-(which framing/tone/angle the user responds well to) than for training a
-generative model from scratch, which would need far more data and a much
-bigger safety-review process than a thumbs-down/thumbs-up signal can
-responsibly support.
-
-**Features worth engineering** from the data above: user-level (declared
-preferences, account age, total feedback given so far, upvote ratio by
-section), item-level (asset/content-type tags, source, live vs. fallback,
-recency), and interaction-level (has this user seen this exact item before,
-their historical vote rate on this asset/content-type/source combination).
-None of this requires anything beyond the existing Postgres schema plus the
-proposed `served_items` log.
-
-**Model choice.** Given the likely data volume for a project like this
-(hundreds to low-thousands of feedback rows per active user at best, not
-millions), a lightweight gradient-boosted tree model (e.g. LightGBM) or even
-regularized logistic regression over the engineered features would
-outperform a deep model and stay cheap to retrain — this is a tabular,
-sparse-feedback problem, not one that benefits from a large neural
-architecture. Cold-start users (no feedback yet) would keep falling back to
-today's preference-based rules until they cross a minimum feedback
-threshold (e.g. 10+ votes), at which point the ranking model takes over for
-them specifically — a per-user switch, not a global cutover.
-
-**Evaluation.** Offline: time-based train/test split (train on feedback up
-to date *T*, evaluate on feedback after *T*, so the model is never evaluated
-on data from the future relative to training) using precision@k /
-AUC on held-out votes. Online: if this were deployed, a simple A/B split
-(rule-based ranking vs. model-based ranking) comparing upvote rate and
-session return-rate would be the first real signal, with a human sanity
-check on a sample of model-ranked dashboards before wider rollout — especially
-important for the AI insight, where "did the user like it" is necessary but
-not sufficient given the safety requirements already enforced today.
-
-**Where it would plug in.** The existing architecture already isolates this
-cleanly: `integrations.py` is the only place that decides what content to
-show, so a future ranking step would live there (e.g. a new `ranking.py`
-called after candidates are fetched, before the response is built), with the
-current hand-written rules kept as the fallback path if the ranking service
-is unavailable or a user is below the cold-start threshold — the same
-live → fallback pattern already used for CoinGecko/CryptoPanic/OpenRouter.
-
-## AI safety note
-
-Cryptalks uses AI only to summarize market context for the daily briefing. It
-does not provide financial advice and does not recommend buying, selling, or
-holding any asset. The system prompt sent to OpenRouter explicitly forbids
-trading directives and price predictions, and every AI response is passed
-through a simple keyword safety filter before being shown to the user — if
-anything looks unsafe, a deterministic fallback insight is used instead (see
-"AI Insight of the Day (OpenRouter)" below for the exact mechanics).
+a recommendation engine.
 
 ---
 
