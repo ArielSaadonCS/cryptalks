@@ -1,16 +1,17 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   ApiError, clearToken, DashboardData, getDashboardToday, getMe, getMyFeedback,
-  getPreferences, getToken, Preferences, refreshAiInsight, SectionType, submitFeedback, Vote,
+  getPreferences, getToken, HistoryPeriod, Preferences, refreshAiInsight, SectionType, submitFeedback, Vote,
 } from "@/lib/api";
 import { Logo } from "@/components/cryptalks/Logo";
 import { SectionCard } from "@/components/cryptalks/SectionCard";
 import { FeedbackButtons } from "@/components/cryptalks/FeedbackButtons";
+import { CoinChart } from "@/components/cryptalks/CoinChart";
 import { cn } from "@/lib/utils";
 import {
   AlertCircle, Brain, ChevronRight, ExternalLink, ImageOff, LineChart, LogOut, Newspaper,
-  Radio, Loader2, Smile, TrendingDown, TrendingUp, User as UserIcon,
+  Radio, Loader2, Settings, Smile, TrendingDown, TrendingUp, User as UserIcon,
   X, ZoomIn,
 } from "lucide-react";
 
@@ -19,6 +20,8 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 function feedbackKey(s: SectionType, id: string) { return `${s}:${id}`; }
+
+const HISTORY_PERIODS: HistoryPeriod[] = ["1D", "1W", "1M", "1Y", "5Y"];
 
 function DashboardPage() {
   const navigate = useNavigate();
@@ -30,6 +33,7 @@ function DashboardPage() {
   const [memeFailed, setMemeFailed] = useState(false);
   const [memeExpanded, setMemeExpanded] = useState(false);
   const [expandedNewsId, setExpandedNewsId] = useState<string | null>(null);
+  const [chartPeriod, setChartPeriod] = useState<HistoryPeriod>("1D");
   const [feedback, setFeedback] = useState<Record<string, Vote>>({});
   const [feedbackSubmitting, setFeedbackSubmitting] = useState<Record<string, boolean>>({});
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
@@ -144,12 +148,21 @@ function DashboardPage() {
         {/* Header */}
         <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
           <Logo />
-          <button
-            onClick={handleLogout}
-            className="flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-3 py-2 text-xs font-medium transition hover:bg-secondary sm:px-4 sm:text-sm"
-          >
-            <LogOut className="h-4 w-4" /> <span className="hidden sm:inline">Log out</span>
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              to="/onboarding"
+              aria-label="Settings"
+              className="flex items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-3 py-2 text-xs font-medium transition hover:bg-secondary sm:px-4 sm:text-sm"
+            >
+              <Settings className="h-4 w-4" /> <span className="hidden sm:inline">Settings</span>
+            </Link>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-3 py-2 text-xs font-medium transition hover:bg-secondary sm:px-4 sm:text-sm"
+            >
+              <LogOut className="h-4 w-4" /> <span className="hidden sm:inline">Log out</span>
+            </button>
+          </div>
         </header>
 
         {/* Hero */}
@@ -203,10 +216,16 @@ function DashboardPage() {
                     {dashboard.aiInsight.isFallback ? "Fallback" : "Live AI"}
                   </span>
                 </div>
-                <h2 className="mt-4 text-xl font-bold text-white sm:text-2xl">
+                <h2
+                  className="mt-4 text-xl font-bold text-white sm:text-2xl"
+                  style={{ textShadow: "0 1px 4px rgba(0,0,0,0.35)" }}
+                >
                   {dashboard.aiInsight.title}
                 </h2>
-                <p className="mt-3 text-sm leading-relaxed text-white/90">
+                <p
+                  className="mt-3 text-sm leading-relaxed text-white"
+                  style={{ textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}
+                >
                   {dashboard.aiInsight.content}
                 </p>
                 <div className="mt-4">
@@ -231,18 +250,100 @@ function DashboardPage() {
           </div>
         )}
 
-        {/* Grid */}
+        {/* Market Signals — the main, central section: full width, with a
+            shared period selector and a chart per coin. */}
+        {showCharts && (
+        <section className="mt-6">
+          <SectionCard
+            title="Market Signals"
+            eyebrow="Live prices & history"
+            icon={<LineChart className="h-5 w-5" />}
+            accent="emerald"
+          >
+            {dashboard.coinPrices.length === 0 ? (
+              <EmptyState label="No price data right now." />
+            ) : (
+              <>
+                <div className="mb-5 flex flex-wrap gap-1.5">
+                  {HISTORY_PERIODS.map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setChartPeriod(p)}
+                      className={cn(
+                        "rounded-full px-3 py-1.5 text-xs font-semibold transition",
+                        chartPeriod === p
+                          ? "border border-emerald/40 bg-emerald/20 text-emerald"
+                          : "border border-border bg-secondary/40 text-muted-foreground hover:bg-secondary",
+                      )}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+                <ul className="grid gap-4 lg:grid-cols-2">
+                  {dashboard.coinPrices.map((coin) => {
+                    const key = feedbackKey("COIN_PRICE", coin.id);
+                    const positive = coin.change24h >= 0;
+                    return (
+                      <li
+                        key={coin.id}
+                        className="rounded-2xl border border-border/60 bg-secondary/30 p-5 transition hover:border-white/15"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-lg font-bold">{coin.symbol}</span>
+                            <span className="text-sm text-muted-foreground">{coin.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-sm">
+                              ${coin.priceUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                            </span>
+                            <span className={cn(
+                              "inline-flex items-center gap-0.5 font-mono text-xs font-semibold",
+                              positive ? "text-emerald" : "text-rose",
+                            )}>
+                              {positive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                              {positive ? "+" : ""}{coin.change24h.toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+                        <span className={cn(
+                          "mt-1 inline-block font-mono text-[9px] uppercase tracking-wider",
+                          coin.source === "live" ? "text-emerald/80" : "text-amber/80",
+                        )}>
+                          {coin.source === "live" ? "Live" : coin.source === "cache" ? "Cached" : "Static"}
+                        </span>
+                        <div className="mt-3">
+                          <CoinChart symbol={coin.symbol} period={chartPeriod} positive={positive} />
+                        </div>
+                        <div className="mt-3 flex justify-end border-t border-border/50 pt-3">
+                          <FeedbackButtons
+                            sectionType="COIN_PRICE"
+                            itemId={coin.id}
+                            vote={feedback[key] ?? null}
+                            submitting={!!feedbackSubmitting[key]}
+                            onVote={handleVote}
+                          />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+          </SectionCard>
+        </section>
+        )}
+
+        {/* News + Meme — secondary content below Market Signals */}
         <section className="mt-6 grid gap-6 lg:grid-cols-3">
-          {/* News + Meme stack in a main column; Market Signals is a sidebar
-              next to it. Whichever of the three are actually shown, the
-              column spans adjust so there's never a dangling empty cell. */}
-          {(showMarketNews || showFun) && (
-          <div className={cn("space-y-6", showCharts ? "lg:col-span-2" : "lg:col-span-3")}>
           {showMarketNews && (
           <SectionCard
             title="Personalized News"
             icon={<Newspaper className="h-5 w-5" />}
             accent="cyan"
+            className={cn(showFun ? "lg:col-span-2" : "lg:col-span-3")}
           >
             {dashboard.marketNews.length === 0 ? (
               <EmptyState label="No news right now." />
@@ -310,120 +411,54 @@ function DashboardPage() {
           </SectionCard>
           )}
 
-          {/* Meme */}
           {showFun && (
           <SectionCard
             title="Crypto Meme"
             icon={<Smile className="h-5 w-5" />}
             accent="amber"
+            className={cn(showMarketNews ? "lg:col-span-1" : "lg:col-span-3")}
           >
-            <div className="grid gap-4 sm:grid-cols-[220px_1fr]">
-              <div className="relative aspect-square overflow-hidden rounded-xl border border-border/60 bg-secondary/50">
-                {memeFailed ? (
-                  <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
-                    <ImageOff className="h-6 w-6" />
-                    <span className="text-xs">Image unavailable</span>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setMemeExpanded(true)}
-                    aria-label="View larger meme"
-                    className="group relative h-full w-full cursor-zoom-in"
-                  >
-                    <img
-                      src={dashboard.meme.imageUrl}
-                      alt={dashboard.meme.title}
-                      onError={() => setMemeFailed(true)}
-                      className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
-                    />
-                    <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/40 group-hover:opacity-100">
-                      <ZoomIn className="h-6 w-6 text-white" />
-                    </span>
-                  </button>
-                )}
-              </div>
-              <div className="flex flex-col">
-                <h3 className="text-lg font-semibold">{dashboard.meme.title}</h3>
-                <span className="mt-3 inline-block w-fit rounded-full bg-amber/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber">
-                  Static meme
-                </span>
-                <div className="mt-auto">
-                  <FeedbackButtons
-                    sectionType="MEME"
-                    itemId={dashboard.meme.id}
-                    prompt="Did this match your mood?"
-                    vote={feedback[feedbackKey("MEME", dashboard.meme.id)] ?? null}
-                    submitting={!!feedbackSubmitting[feedbackKey("MEME", dashboard.meme.id)]}
-                    onVote={handleVote}
-                  />
+            <div className="relative aspect-[16/10] overflow-hidden rounded-xl border border-border/60 bg-secondary/50">
+              {memeFailed ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
+                  <ImageOff className="h-6 w-6" />
+                  <span className="text-xs">Image unavailable</span>
                 </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setMemeExpanded(true)}
+                  aria-label="View larger meme"
+                  className="group relative h-full w-full cursor-zoom-in"
+                >
+                  <img
+                    src={dashboard.meme.imageUrl}
+                    alt={dashboard.meme.title}
+                    onError={() => setMemeFailed(true)}
+                    className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
+                  />
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/40 group-hover:opacity-100">
+                    <ZoomIn className="h-6 w-6 text-white" />
+                  </span>
+                </button>
+              )}
+            </div>
+            <div className="mt-4">
+              <h3 className="text-lg font-semibold">{dashboard.meme.title}</h3>
+              <span className="mt-2 inline-block w-fit rounded-full bg-amber/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber">
+                Static meme
+              </span>
+              <div className="mt-4">
+                <FeedbackButtons
+                  sectionType="MEME"
+                  itemId={dashboard.meme.id}
+                  prompt="Did this match your mood?"
+                  vote={feedback[feedbackKey("MEME", dashboard.meme.id)] ?? null}
+                  submitting={!!feedbackSubmitting[feedbackKey("MEME", dashboard.meme.id)]}
+                  onVote={handleVote}
+                />
               </div>
             </div>
-          </SectionCard>
-          )}
-          </div>
-          )}
-
-          {/* Coin prices — sidebar next to News/Meme, or full width alone */}
-          {showCharts && (
-          <SectionCard
-            title="Market Signals"
-            eyebrow="24h movement"
-            icon={<LineChart className="h-5 w-5" />}
-            accent="emerald"
-            className={cn(!(showMarketNews || showFun) && "lg:col-span-3")}
-          >
-            {dashboard.coinPrices.length === 0 ? (
-              <EmptyState label="No price data right now." />
-            ) : (
-              <ul className="space-y-2">
-                {dashboard.coinPrices.map((coin) => {
-                  const key = feedbackKey("COIN_PRICE", coin.id);
-                  const positive = coin.change24h >= 0;
-                  return (
-                    <li
-                      key={coin.id}
-                      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-border/60 bg-secondary/30 p-3 transition hover:border-white/15"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold">{coin.symbol}</span>
-                          <span className="truncate text-xs text-muted-foreground">{coin.name}</span>
-                        </div>
-                        <div className="mt-1 flex items-center gap-2">
-                          <span className="font-mono text-sm">
-                            ${coin.priceUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                          </span>
-                          <span className={cn(
-                            "inline-flex items-center gap-0.5 font-mono text-xs font-semibold",
-                            positive ? "text-emerald" : "text-rose",
-                          )}>
-                            {positive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                            {positive ? "+" : ""}{coin.change24h.toFixed(1)}%
-                          </span>
-                        </div>
-                        <span className={cn(
-                          "mt-1 inline-block font-mono text-[9px] uppercase tracking-wider",
-                          coin.source === "live" ? "text-emerald/80" : "text-amber/80",
-                        )}>
-                          {coin.source === "live" ? "Live" : coin.source === "cache" ? "Cached" : "Static"}
-                        </span>
-                      </div>
-                      <div className="flex flex-col items-end">
-                        <FeedbackButtons
-                          sectionType="COIN_PRICE"
-                          itemId={coin.id}
-                          vote={feedback[key] ?? null}
-                          submitting={!!feedbackSubmitting[key]}
-                          onVote={handleVote}
-                        />
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
           </SectionCard>
           )}
         </section>

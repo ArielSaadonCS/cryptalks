@@ -59,3 +59,14 @@ class CachedCoinPrice(Base):
     price_usd = Column(Float, nullable=False)
     change_24h = Column(Float, nullable=True)
     fetched_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class CachedPriceHistory(Base):
+    __tablename__ = "cached_price_history"
+    __table_args__ = (UniqueConstraint("symbol", "period", name="uq_price_history_symbol_period"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String, nullable=False, index=True)
+    period = Column(String, nullable=False)
+    points = Column(JSON, nullable=False)
+    fetched_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

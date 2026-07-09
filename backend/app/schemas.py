@@ -184,6 +184,20 @@ class MemeItem(BaseModel):
     is_fallback: bool = Field(alias="isFallback")
 
 
+class PriceHistoryPoint(BaseModel):
+    timestamp: int
+    price: float
+
+
+class PriceHistoryResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    symbol: str
+    period: str
+    points: list[PriceHistoryPoint]
+    is_fallback: bool = Field(alias="isFallback")
+
+
 class AIInsightRefreshRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 

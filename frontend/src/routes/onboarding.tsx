@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, getMe, getPreferences, getToken, savePreferences } from "@/lib/api";
 import { Logo } from "@/components/cryptalks/Logo";
@@ -58,6 +58,7 @@ function OnboardingPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     if (!getToken()) { navigate({ to: "/login", replace: true }); return; }
@@ -65,7 +66,10 @@ function OnboardingPage() {
     (async () => {
       try {
         const me = await getMe();
-        if (me.onboardingCompleted) { navigate({ to: "/dashboard", replace: true }); return; }
+        // A completed user can still land here on purpose (the dashboard's
+        // Settings button) to edit their preferences -- only a fresh signup
+        // (never completed) needs the multi-step wizard framing untouched.
+        if (!cancelled) setIsEditing(me.onboardingCompleted);
       } catch { navigate({ to: "/login", replace: true }); return; }
       try {
         const prefs = await getPreferences();
@@ -138,11 +142,21 @@ function OnboardingPage() {
           style={{ background: "var(--gradient-aurora)" }} />
       </div>
       <div className="relative mx-auto max-w-2xl">
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-8 flex items-center justify-between gap-3">
           <Logo />
-          <span className="font-mono text-xs text-muted-foreground">
-            Step {step + 1} / {steps.length}
-          </span>
+          <div className="flex items-center gap-4">
+            {isEditing && (
+              <Link
+                to="/dashboard"
+                className="text-xs font-medium text-muted-foreground transition hover:text-foreground"
+              >
+                ← Back to dashboard
+              </Link>
+            )}
+            <span className="font-mono text-xs text-muted-foreground">
+              Step {step + 1} / {steps.length}
+            </span>
+          </div>
         </div>
 
         {/* Progress */}
@@ -335,7 +349,7 @@ function OnboardingPage() {
               style={{ background: "var(--gradient-aurora)", boxShadow: "var(--shadow-glow)" }}
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : (
-                <>{step === steps.length - 1 ? "Save & continue" : "Next"}
+                <>{step === steps.length - 1 ? (isEditing ? "Save changes" : "Save & continue") : "Next"}
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" /></>
               )}
             </button>

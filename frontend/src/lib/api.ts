@@ -74,6 +74,20 @@ export interface DashboardData {
   meme: MemeItem;
 }
 
+export type HistoryPeriod = "1D" | "1W" | "1M" | "1Y" | "5Y";
+
+export interface PriceHistoryPoint {
+  timestamp: number;
+  price: number;
+}
+
+export interface PriceHistory {
+  symbol: string;
+  period: HistoryPeriod;
+  points: PriceHistoryPoint[];
+  isFallback: boolean;
+}
+
 export type SectionType = "MARKET_NEWS" | "COIN_PRICE" | "AI_INSIGHT" | "MEME";
 export type Vote = "UP" | "DOWN";
 
@@ -160,3 +174,5 @@ export const refreshAiInsight = (previousContent: string) =>
     method: "POST",
     body: JSON.stringify({ previousContent }),
   });
+export const getCoinHistory = (symbol: string, period: HistoryPeriod) =>
+  request<PriceHistory>(`/dashboard/coin-history?symbol=${encodeURIComponent(symbol)}&period=${period}`);

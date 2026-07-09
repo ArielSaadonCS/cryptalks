@@ -11,13 +11,14 @@ small static catalog, deterministically per user per day.
 """
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import CachedCoinPrice, UserPreferences
+from app.models import CachedCoinPrice, CachedPriceHistory, UserPreferences
 
 COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price"
 COINGECKO_TIMEOUT_SECONDS = 5.0
@@ -365,6 +366,93 @@ def get_coin_prices(assets: list[str], db: Session) -> list[dict[str, object]]:
     return results
 
 
+COINGECKO_CHART_URL = "https://api.coingecko.com/api/v3/coins/{id}/market_chart"
+CHART_TIMEOUT_SECONDS = 8.0
+
+# CoinGecko's "days" param per period. Its free tier auto-adjusts point
+# density for the range (5-min for 1 day, hourly for a few days, daily
+# beyond that) -- we don't need to request an interval explicitly.
+PERIOD_DAYS: dict[str, int] = {
+    "1D": 1,
+    "1W": 7,
+    "1M": 30,
+    "1Y": 365,
+    "5Y": 1825,
+}
+
+# How long a cached period's data stays fresh before we try live again.
+# Shorter-range periods move faster and are cheap to refetch; multi-year
+# history barely changes day to day.
+PERIOD_CACHE_TTL_MINUTES: dict[str, int] = {
+    "1D": 15,
+    "1W": 60,
+    "1M": 180,
+    "1Y": 720,
+    "5Y": 1440,
+}
+
+
+def _fetch_live_price_history(symbol: str, period: str) -> list[dict[str, object]] | None:
+    coingecko_id = COINGECKO_IDS.get(symbol)
+    days = PERIOD_DAYS.get(period)
+    if not coingecko_id or days is None:
+        return None
+
+    url = COINGECKO_CHART_URL.format(id=coingecko_id)
+    params = {"vs_currency": "usd", "days": days}
+    headers = {"x-cg-demo-api-key": settings.coingecko_api_key} if settings.coingecko_api_key else {}
+
+    try:
+        response = httpx.get(url, params=params, headers=headers, timeout=CHART_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        prices = response.json().get("prices") or []
+    except Exception as exc:  # network errors, timeouts, bad JSON, non-2xx status, etc.
+        print(f"[integrations] CoinGecko chart request failed, falling back: {exc}")
+        return None
+
+    points = [{"timestamp": int(ts), "price": float(price)} for ts, price in prices]
+    return points or None
+
+
+def get_price_history(symbol: str, period: str, db: Session) -> dict[str, object]:
+    """Return historical price points for one coin/period: fresh cache ->
+    live CoinGecko (refreshing the cache on success) -> stale cache -> empty.
+    Never raises -- an empty `points` list means "chart unavailable", handled
+    by the frontend the same way a failed image load is."""
+    symbol = symbol.upper()
+    cached = (
+        db.query(CachedPriceHistory)
+        .filter(CachedPriceHistory.symbol == symbol, CachedPriceHistory.period == period)
+        .first()
+    )
+
+    ttl = timedelta(minutes=PERIOD_CACHE_TTL_MINUTES.get(period, 60))
+    if cached and datetime.now(timezone.utc) - cached.fetched_at < ttl:
+        return {"symbol": symbol, "period": period, "points": cached.points, "isFallback": False}
+
+    live_points = _fetch_live_price_history(symbol, period)
+    if live_points:
+        try:
+            if cached is None:
+                cached = CachedPriceHistory(symbol=symbol, period=period)
+                db.add(cached)
+            cached.points = live_points
+            cached.fetched_at = datetime.now(timezone.utc)
+            db.commit()
+        except IntegrityError:
+            # Two requests raced on the same (symbol, period) cache-miss --
+            # another one already inserted it between our SELECT and INSERT.
+            # Not a real conflict (both fetched the same fresh data), so just
+            # drop our own write and carry on with the data we already have.
+            db.rollback()
+        return {"symbol": symbol, "period": period, "points": live_points, "isFallback": False}
+
+    if cached:
+        return {"symbol": symbol, "period": period, "points": cached.points, "isFallback": True}
+
+    return {"symbol": symbol, "period": period, "points": [], "isFallback": True}
+
+
 def _rank_news(matched: list[dict[str, object]], rest: list[dict[str, object]], exclude_ids: set[str]) -> list[dict[str, object]]:
     """Build a news list from matched items first, then the rest, skipping any
     item whose id is in exclude_ids (previously downvoted by the user)."""
@@ -572,13 +660,26 @@ def _build_ai_context(
     return "\n".join(lines)
 
 
-def _build_user_prompt(context: str) -> str:
+_RISK_FRAMING_GUIDANCE = {
+    "Low": "This user has a Low risk tolerance -- favor steady, lower-volatility framing, and if you "
+    "mention a sharp move, keep the emphasis on stability and context rather than the swing itself.",
+    "Medium": "This user has a Medium risk tolerance -- a balanced tone is appropriate: steady context "
+    "is fine, but you can also note a notable swing without downplaying or amplifying it.",
+    "High": "This user has a High risk tolerance -- it's fine to engage with volatility and sharp moves "
+    "more directly and matter-of-factly, without exaggerating or encouraging any specific action.",
+}
+
+
+def _build_user_prompt(context: str, risk_level: str) -> str:
+    risk_guidance = _RISK_FRAMING_GUIDANCE.get(
+        risk_level, "Calibrate your tone to this user's stated risk level from the context below."
+    )
     return (
         "Using the structured context below, write a short, interesting AI Insight of the Day. "
         "Describe what's happening in the market in a natural, narrative style, and weave in why "
         "it might matter for this kind of investor without explicitly listing their preferences "
         "back to them or explaining your reasoning. Do not provide financial advice and do not add "
-        "a disclaimer sentence.\n\n" + context
+        f"a disclaimer sentence. {risk_guidance}\n\n" + context
     )
 
 
@@ -696,7 +797,7 @@ def generate_ai_insight(
 
     if settings.openrouter_api_key and settings.openrouter_model:
         context = _build_ai_context(preferences, coin_prices, market_news, feedback_items)
-        user_prompt = _build_user_prompt(context)
+        user_prompt = _build_user_prompt(context, preferences.risk_level)
         if avoid_content:
             user_prompt += (
                 "\n\nThe user gave a thumbs-down to this previous insight and wants something "

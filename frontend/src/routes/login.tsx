@@ -2,7 +2,8 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { FormEvent, useState } from "react";
 import { ApiError, getMe, login, setToken } from "@/lib/api";
 import { Logo } from "@/components/cryptalks/Logo";
-import { AlertCircle, ArrowRight, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -83,19 +84,37 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
 export function Field({
   label, id, type, value, onChange, hint,
 }: { label: string; id: string; type: string; value: string; onChange: (v: string) => void; hint?: string }) {
+  const [revealed, setRevealed] = useState(false);
+  const isPassword = type === "password";
+
   return (
     <div>
       <label htmlFor={id} className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         {label}
       </label>
-      <input
-        id={id}
-        type={type}
-        value={value}
-        required
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-border bg-secondary/40 px-4 py-3 text-sm text-foreground outline-none transition focus:border-primary/60 focus:bg-secondary/70 focus:ring-4 focus:ring-primary/15"
-      />
+      <div className="relative">
+        <input
+          id={id}
+          type={isPassword && revealed ? "text" : type}
+          value={value}
+          required
+          onChange={(e) => onChange(e.target.value)}
+          className={cn(
+            "w-full rounded-xl border border-border bg-secondary/40 px-4 py-3 text-sm text-foreground outline-none transition focus:border-primary/60 focus:bg-secondary/70 focus:ring-4 focus:ring-primary/15",
+            isPassword && "pr-11",
+          )}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setRevealed((r) => !r)}
+            aria-label={revealed ? "Hide password" : "Show password"}
+            className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground transition hover:text-foreground"
+          >
+            {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        )}
+      </div>
       {hint && <p className="mt-1.5 text-xs text-muted-foreground">{hint}</p>}
     </div>
   );

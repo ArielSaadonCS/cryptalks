@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.integrations import generate_ai_insight, get_coin_prices, get_market_news, pick_meme
+from app.integrations import generate_ai_insight, get_coin_prices, get_market_news, get_price_history, pick_meme
 from app.models import Feedback, User, UserPreferences
 from app.schemas import (
     AIInsightItem,
@@ -12,9 +12,12 @@ from app.schemas import (
     DashboardResponse,
     MarketNewsItem,
     MemeItem,
+    PriceHistoryResponse,
 )
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+
+ALLOWED_HISTORY_PERIODS = {"1D", "1W", "1M", "1Y", "5Y"}
 
 
 def _downvoted_item_ids(feedback_rows: list[Feedback], section_type: str) -> set[str]:
@@ -81,3 +84,26 @@ def refresh_ai_insight(
     )
 
     return AIInsightItem(**ai_insight)
+
+
+@router.get("/coin-history", response_model=PriceHistoryResponse)
+def get_coin_history(
+    symbol: str,
+    period: str = "1D",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    preferences = _load_preferences(current_user, db)
+    symbol = symbol.upper()
+    period = period.upper()
+
+    if symbol not in preferences.assets:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not one of your selected assets")
+    if period not in ALLOWED_HISTORY_PERIODS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid period. Allowed: {', '.join(sorted(ALLOWED_HISTORY_PERIODS))}",
+        )
+
+    result = get_price_history(symbol, period, db)
+    return PriceHistoryResponse(**result)
