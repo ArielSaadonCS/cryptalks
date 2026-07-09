@@ -26,9 +26,15 @@ briefing per user.
   deterministic fallback insight and a keyword-based safety filter that
   discards any unsafe/financial-advice-flavored output
 - A dynamic daily meme, chosen deterministically per user per day from a
-  static catalog (no external API, no database table)
-- Thumbs up/down feedback on every dashboard item, persisted in PostgreSQL and
-  restored on refresh
+  static catalog of real meme images (no external API, no database table)
+  with a click-to-enlarge lightbox view
+- Thumbs up/down feedback on every dashboard item, persisted in PostgreSQL,
+  restored on refresh, and actively used to shape future content (see
+  "Feedback vs. preferences, and what's next" below)
+- Each of the 4 dashboard sections only renders if the user selected its
+  content type during onboarding (`Market News`, `Charts`, `AI Insights`,
+  `Fun`) — the dashboard is genuinely built from preferences, not just
+  labeled by them
 - Fully Dockerized: `docker compose up --build` runs the whole stack
 
 ## Tech stack
@@ -90,6 +96,15 @@ All three third-party keys are optional. The app is fully functional with
 none of them configured — see the "Integration details" section below for the
 exact fallback behavior of each.
 
+`docker-compose.yml` reads `COINGECKO_API_KEY`, `CRYPTOPANIC_API_KEY`,
+`OPENROUTER_API_KEY`, and `OPENROUTER_MODEL` from a **root-level `.env` file**
+(via `${VAR:-}` substitution, Compose's standard mechanism — no extra
+config needed, it's picked up automatically since `.env` sits next to
+`docker-compose.yml`). Copy `.env.example` to `.env` and fill in real values
+to enable live integrations; leave it missing or blank and every integration
+falls back gracefully. `.env` is gitignored — never put real keys in
+`.env.example`, which is the tracked template.
+
 ## Local setup
 
 Requirements: Docker and Docker Compose.
@@ -99,7 +114,8 @@ docker compose up --build
 ```
 
 This starts three services, with working development defaults already in
-`docker-compose.yml` (no `.env` file required to get started):
+`docker-compose.yml` (no `.env` file required to get started — only add one
+at the project root if you want live CryptoPanic/OpenRouter, per above):
 
 - **db** — PostgreSQL 16
 - **backend** — FastAPI on **http://localhost:8000** (Swagger UI at
@@ -110,9 +126,11 @@ Tables are created automatically on backend startup.
 
 To run a service outside Docker:
 
-- **Backend:** copy `.env.example` to `backend/.env`, adjust values, then run
-  `uvicorn app.main:app --reload` from `backend/` against your own Postgres
-  instance.
+- **Backend:** copy `.env.example` to `backend/.env` (a separate file from
+  the root-level `.env` Docker Compose uses — `config.py` loads `.env`
+  relative to the working directory, which is `backend/` when running
+  uvicorn directly), adjust values, then run `uvicorn app.main:app --reload`
+  from `backend/` against your own Postgres instance.
 - **Frontend:** copy `frontend/.env.example` to `frontend/.env`, then run
   `npm install` and `npm run dev` from `frontend/`. `src/routeTree.gen.ts` is
   auto-generated from the files in `src/routes/` on every `dev`/`build` and is
@@ -127,14 +145,18 @@ placeholders only.
 2. **Sign up** with a name, email, and a password meeting the policy shown on
    the form. You're redirected to `/onboarding`.
 3. **Complete onboarding**: pick at least one asset, an investor type, at
-   least one content type, and a risk level, then submit.
+   least one content type (try selecting only one or two — the dashboard
+   only shows sections matching what you picked), and a risk level, then
+   submit.
 4. You're redirected to **`/dashboard`**, which shows your preference summary
-   and four personalized sections: Market News, Coin Prices, AI Insight of the
-   Day, and a Fun Crypto Meme — each with a subtle label showing whether its
-   data is live, cached, or a fallback.
-5. **Vote** 👍 or 👎 on a few items across different sections.
-6. **Refresh the page** — the same buttons stay highlighted, confirming your
-   feedback was persisted and reloaded from the backend.
+   and up to four personalized sections (Market News, Coin Prices, AI Insight
+   of the Day, and a Fun Crypto Meme) — each with a subtle label showing
+   whether its data is live, cached, or a fallback.
+5. **Vote** 👍 or 👎 on a few items across different sections — downvoting the
+   AI insight replaces it immediately, and downvoting a coin removes it from
+   Market Signals and your saved preferences.
+6. **Refresh the page** — feedback stays persisted, and the removed coin
+   stays removed (see "Feedback vs. preferences, and what's next" below).
 7. **Log out**, then **log back in** — since onboarding is already complete,
    you're taken straight to `/dashboard` without seeing the form again.
 
@@ -149,6 +171,7 @@ placeholders only.
 | GET | `/preferences/me` | Bearer | Current user's onboarding preferences |
 | PUT | `/preferences/me` | Bearer | Create/update preferences, completes onboarding |
 | GET | `/dashboard/today` | Bearer | The personalized daily briefing |
+| POST | `/dashboard/ai-insight/refresh` | Bearer | Regenerate the AI insight, avoiding a rejected one (used after a thumbs-down) |
 | POST | `/feedback` | Bearer | Record/update a thumbs up/down vote |
 | GET | `/feedback/me` | Bearer | All of the current user's feedback votes |
 
@@ -168,8 +191,9 @@ Cryptalks deliberately keeps two kinds of user data separate:
   modifies preferences or `onboardingCompleted` — it's its own row, and the
   user never has to redo onboarding because of it.
 
-Feedback does inform two parts of the dashboard, with a deliberately simple
-rule rather than any ranking or ML model:
+Feedback actively shapes the dashboard for every section, each with a rule
+matched to what that section actually is — deliberately simple, hand-written
+logic, not a ranking or ML model:
 
 - **Market News** — a news item the user has downvoted is excluded from
   future selection where possible. This mostly matters for the static
@@ -183,18 +207,98 @@ rule rather than any ranking or ML model:
   to the full pool at once. If you downvote every reachable news item, you'll
   see the fewest of them come back that still satisfies the minimum, not all
   of them simultaneously.
-- If OpenRouter is configured, a one-line summary of the user's feedback
-  history is also included as context in the AI insight prompt, though the
-  model may or may not act on it.
-
-Coin prices are not filtered by feedback — a downvoted price row would just
-mean the user doesn't want to see that asset, which is really an onboarding
-preference change, not a feedback-driven exclusion.
+- **Coin Prices** — a downvoted coin is treated as "I don't want this asset
+  in my briefing at all": `POST /feedback` removes it from the user's saved
+  `assets` preference (`backend/app/feedback.py`, `_maybe_remove_downvoted_asset`),
+  so it stops appearing in Market Signals, Market News, and the AI insight's
+  price context on every future load — not just visually hidden client-side.
+  The last remaining asset is never removed, so the dashboard always has at
+  least one asset to build around.
+- **AI Insight of the Day** — a thumbs-down doesn't just get recorded, it
+  triggers an immediate replacement: the frontend calls
+  `POST /dashboard/ai-insight/refresh` with the rejected insight's text, and
+  `generate_ai_insight()` is asked to produce a *different* one (a different
+  angle in the live OpenRouter prompt, or a rotated phrasing/headline variant
+  in the deterministic fallback — see `integrations.py`). Previously-rejected
+  insight ids are also excluded on ordinary dashboard loads, so a plain
+  refresh won't coincidentally regenerate the exact same rejected wording.
+- Across all sections, if OpenRouter is configured, a one-line summary of the
+  user's feedback history is included as context in the AI insight prompt too.
 
 There is still no ranking model, ML training, or fine-tuning anywhere in the
-codebase — this is a hand-written exclusion rule, not a recommendation engine.
-Future phases could build on it, e.g. weighting which content types or assets
-get emphasis, or eventually training/evaluating a lightweight ranking model.
+codebase — every rule above is hand-written exclusion/replacement logic, not
+a recommendation engine. See "Suggested approach to future model training"
+below for how the same `feedback` table could actually be used to train one.
+
+## Suggested approach to future model training
+
+The task calls for a suggestion here, not an implementation — this section is
+a proposal for how the `feedback` table already being populated could
+eventually train a real ranking model, without changing anything in the
+current codebase.
+
+**What's already being captured.** Every vote is a row of
+`(user_id, section_type, item_id, vote, created_at)`, alongside each user's
+declared `(assets, investor_type, content_types, risk_level)` in
+`user_preferences`. That's already most of what a first model needs: a
+user, an item, a label, and a timestamp. The one gap is that item
+*content* isn't stored — `item_id` for news/memes is a stable catalog key,
+but the AI insight's id is a hash of text that's never persisted verbatim.
+A training pipeline would need to log the actual content shown alongside
+each feedback event (e.g. a lightweight `served_items` table recording what
+was shown, when, to whom, before voting), so features can be computed from
+what the user actually saw, not just an id.
+
+**Framing the problem.** This isn't really "one model" — the four sections
+are different enough (a ranked list of news items vs. a single generated
+insight vs. one meme pick) that they're better treated as related but
+separate ranking problems sharing the same feature space, rather than one
+model doing everything. For News, Meme, and Coin Price sections, a natural
+framing is binary classification: "given this user and this candidate item,
+will they upvote it?" scored per-candidate, with the dashboard showing the
+highest-scoring items instead of today's hand-written rules. For the AI
+insight, feedback is better used as a signal for *prompt selection/tuning*
+(which framing/tone/angle the user responds well to) than for training a
+generative model from scratch, which would need far more data and a much
+bigger safety-review process than a thumbs-down/thumbs-up signal can
+responsibly support.
+
+**Features worth engineering** from the data above: user-level (declared
+preferences, account age, total feedback given so far, upvote ratio by
+section), item-level (asset/content-type tags, source, live vs. fallback,
+recency), and interaction-level (has this user seen this exact item before,
+their historical vote rate on this asset/content-type/source combination).
+None of this requires anything beyond the existing Postgres schema plus the
+proposed `served_items` log.
+
+**Model choice.** Given the likely data volume for a project like this
+(hundreds to low-thousands of feedback rows per active user at best, not
+millions), a lightweight gradient-boosted tree model (e.g. LightGBM) or even
+regularized logistic regression over the engineered features would
+outperform a deep model and stay cheap to retrain — this is a tabular,
+sparse-feedback problem, not one that benefits from a large neural
+architecture. Cold-start users (no feedback yet) would keep falling back to
+today's preference-based rules until they cross a minimum feedback
+threshold (e.g. 10+ votes), at which point the ranking model takes over for
+them specifically — a per-user switch, not a global cutover.
+
+**Evaluation.** Offline: time-based train/test split (train on feedback up
+to date *T*, evaluate on feedback after *T*, so the model is never evaluated
+on data from the future relative to training) using precision@k /
+AUC on held-out votes. Online: if this were deployed, a simple A/B split
+(rule-based ranking vs. model-based ranking) comparing upvote rate and
+session return-rate would be the first real signal, with a human sanity
+check on a sample of model-ranked dashboards before wider rollout — especially
+important for the AI insight, where "did the user like it" is necessary but
+not sufficient given the safety requirements already enforced today.
+
+**Where it would plug in.** The existing architecture already isolates this
+cleanly: `integrations.py` is the only place that decides what content to
+show, so a future ranking step would live there (e.g. a new `ranking.py`
+called after candidates are fetched, before the response is built), with the
+current hand-written rules kept as the fallback path if the ranking service
+is unavailable or a user is below the cold-start threshold — the same
+live → fallback pattern already used for CoinGecko/CryptoPanic/OpenRouter.
 
 ## AI safety note
 
@@ -244,6 +348,10 @@ cryptalks/
 │   │       ├── signup.tsx
 │   │       ├── onboarding.tsx     # 4-step wizard (assets, investor type, content, risk)
 │   │       └── dashboard.tsx
+│   ├── public/
+│   │   ├── favicon.svg     # Gradient coin icon (browser tab)
+│   │   ├── favicon.ico     # Raster fallback for older browsers
+│   │   └── memes/          # Static meme images served at /memes/*
 │   ├── index.html
 │   ├── vite.config.ts
 │   ├── package.json
@@ -467,9 +575,9 @@ models — nothing here requires or hardcodes a paid model.
 ### Dynamic meme
 
 The meme is chosen from a static catalog of 7 crypto-themed memes (title,
-caption, image, all original/placeholder — no copyrighted characters or
-branded content). There's no meme API and no database table for memes.
-Selection is deterministic per user per day:
+caption, and image). Images are served as static files from
+`frontend/public/memes/` — no external meme API, no database table, and
+nothing fetched at runtime. Selection is deterministic per user per day:
 
 ```python
 digest = hashlib.sha256(f"{user_id}-{today_date}".encode()).hexdigest()
@@ -479,8 +587,14 @@ index = int(digest, 16) % len(MEME_CATALOG)
 This uses a cryptographic hash rather than Python's built-in `hash()`, which
 is randomized per process — a stable hash means the same user sees the same
 meme all day, even across backend restarts, without needing to persist
-anything. If the meme image fails to load in the browser, the title and
-caption still render and the layout stays intact.
+anything. If the meme image fails to load in the browser, the title still
+renders and the layout stays intact. Clicking a meme opens it full-size in a
+lightbox (closes on click-outside, the X button, or Escape).
+
+> **Note on image sourcing:** the 7 catalog images are well-known,
+> widely-circulated crypto/internet memes, not originally-created artwork —
+> typical for casual/portfolio use, but worth knowing if this is ever used
+> somewhere that requires cleared image rights.
 
 ## Testing individual integrations
 
@@ -493,14 +607,15 @@ Break connectivity (e.g. point `COINGECKO_URL` at an unreachable host and
 rebuild) and confirm rows fall back to "Cached data", then "Fallback data" for
 any asset never cached — the dashboard keeps loading (`200`) throughout.
 
-**CryptoPanic:** with no `CRYPTOPANIC_API_KEY`, Market News shows "Fallback
-news" items. Add a real key to `docker-compose.yml` and rebuild
-(`docker compose up --build backend`) to see "Live news" with real article
+**CryptoPanic:** with no `CRYPTOPANIC_API_KEY` set (no root `.env`, or the
+line left blank), Market News shows "Fallback" items. Add a real key to a
+root-level `.env` file (see "Environment variables" above) and rebuild
+(`docker compose up --build backend`) to see "Live" news with real article
 links. Set an invalid key to confirm the request fails cleanly and news falls
 back to static content.
 
-**OpenRouter:** with no `OPENROUTER_API_KEY`/`OPENROUTER_MODEL`, AI Insight of
-the Day shows "Fallback insight". Add both to `docker-compose.yml` and rebuild
-to see "AI-generated insight". Set an invalid key/model to confirm the request
+**OpenRouter:** with no `OPENROUTER_API_KEY`/`OPENROUTER_MODEL` in `.env`, AI
+Insight of the Day shows "Fallback". Add both to the root `.env` file and
+rebuild to see "Live AI". Set an invalid key/model to confirm the request
 fails cleanly and the insight falls back to the deterministic template — in
 every case `GET /dashboard/today` still returns `200`.
