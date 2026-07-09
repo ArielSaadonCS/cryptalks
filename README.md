@@ -243,7 +243,8 @@ logic, not a ranking or ML model:
 
 There is still no ranking model, ML training, or fine-tuning anywhere in the
 codebase — every rule above is hand-written exclusion/replacement logic, not
-a recommendation engine.
+a recommendation engine. See [`MODEL_TRAINING_APPROACH.md`](MODEL_TRAINING_APPROACH.md)
+for a proposal on how this same feedback data could train one.
 
 ---
 
