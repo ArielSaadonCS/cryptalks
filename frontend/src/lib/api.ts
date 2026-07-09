@@ -1,3 +1,4 @@
+// Cryptalks API client — preserves backend contract exactly.
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const TOKEN_KEY = "cryptalks_token";
 
@@ -92,7 +93,6 @@ export interface Feedback {
 
 export class ApiError extends Error {
   status: number;
-
   constructor(message: string, status: number) {
     super(message);
     this.status = status;
@@ -100,23 +100,22 @@ export class ApiError extends Error {
 }
 
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(TOKEN_KEY);
 }
-
 export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(TOKEN_KEY, token);
 }
-
 export function clearToken(): void {
-  localStorage.removeItem(TOKEN_KEY);
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(TOKEN_KEY);
 }
 
 async function extractErrorMessage(response: Response): Promise<string> {
   try {
     const data = await response.json();
-    if (typeof data.detail === "string") {
-      return data.detail;
-    }
+    if (typeof data.detail === "string") return data.detail;
     if (Array.isArray(data.detail)) {
       return data.detail
         .map((item: { msg?: string }) => (item.msg ?? "").replace(/^Value error,\s*/, ""))
@@ -124,7 +123,7 @@ async function extractErrorMessage(response: Response): Promise<string> {
         .join(" ");
     }
   } catch {
-    // response body was not JSON
+    // no JSON
   }
   return "Something went wrong. Please try again.";
 }
@@ -135,59 +134,24 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string> | undefined),
   };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   const response = await fetch(`${API_URL}${path}`, { ...options, headers, cache: "no-store" });
-
-  if (!response.ok) {
-    throw new ApiError(await extractErrorMessage(response), response.status);
-  }
-
+  if (!response.ok) throw new ApiError(await extractErrorMessage(response), response.status);
   return response.json() as Promise<T>;
 }
 
-export function signup(name: string, email: string, password: string): Promise<AuthResponse> {
-  return request<AuthResponse>("/auth/signup", {
-    method: "POST",
-    body: JSON.stringify({ name, email, password }),
-  });
-}
+export const signup = (name: string, email: string, password: string) =>
+  request<AuthResponse>("/auth/signup", { method: "POST", body: JSON.stringify({ name, email, password }) });
 
-export function login(email: string, password: string): Promise<AuthResponse> {
-  return request<AuthResponse>("/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
-}
+export const login = (email: string, password: string) =>
+  request<AuthResponse>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
 
-export function getMe(): Promise<User> {
-  return request<User>("/auth/me");
-}
-
-export function getPreferences(): Promise<Preferences> {
-  return request<Preferences>("/preferences/me");
-}
-
-export function savePreferences(preferences: PreferencesInput): Promise<Preferences> {
-  return request<Preferences>("/preferences/me", {
-    method: "PUT",
-    body: JSON.stringify(preferences),
-  });
-}
-
-export function getDashboardToday(): Promise<DashboardData> {
-  return request<DashboardData>("/dashboard/today");
-}
-
-export function submitFeedback(data: FeedbackInput): Promise<Feedback> {
-  return request<Feedback>("/feedback", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-}
-
-export function getMyFeedback(): Promise<Feedback[]> {
-  return request<Feedback[]>("/feedback/me");
-}
+export const getMe = () => request<User>("/auth/me");
+export const getPreferences = () => request<Preferences>("/preferences/me");
+export const savePreferences = (p: PreferencesInput) =>
+  request<Preferences>("/preferences/me", { method: "PUT", body: JSON.stringify(p) });
+export const getDashboardToday = () => request<DashboardData>("/dashboard/today");
+export const submitFeedback = (data: FeedbackInput) =>
+  request<Feedback>("/feedback", { method: "POST", body: JSON.stringify(data) });
+export const getMyFeedback = () => request<Feedback[]>("/feedback/me");

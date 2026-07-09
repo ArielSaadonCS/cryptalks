@@ -33,7 +33,8 @@ briefing per user.
 
 ## Tech stack
 
-**Frontend:** React, TypeScript, Vite, React Router (no Redux, no UI library)
+**Frontend:** React 19, TypeScript, Vite, TanStack Router (client-only, file-based
+routing), Tailwind CSS v4, `lucide-react` icons (no Redux, no component library)
 
 **Backend:** FastAPI, SQLAlchemy, PostgreSQL, JWT (`python-jose`), `bcrypt`
 (via `passlib`), `httpx` for outbound calls to CoinGecko / CryptoPanic /
@@ -113,7 +114,9 @@ To run a service outside Docker:
   `uvicorn app.main:app --reload` from `backend/` against your own Postgres
   instance.
 - **Frontend:** copy `frontend/.env.example` to `frontend/.env`, then run
-  `npm install` and `npm run dev` from `frontend/`.
+  `npm install` and `npm run dev` from `frontend/`. `src/routeTree.gen.ts` is
+  auto-generated from the files in `src/routes/` on every `dev`/`build` and is
+  gitignored — don't edit it by hand.
 
 Never commit real API keys or secrets — `.env.example` files contain safe
 placeholders only.
@@ -225,19 +228,24 @@ cryptalks/
 │   └── Dockerfile
 ├── frontend/
 │   ├── src/
-│   │   ├── main.tsx              # React entry point, router setup
-│   │   ├── App.tsx               # Route definitions
-│   │   ├── api.ts                # Backend API helper (fetch, token storage)
-│   │   ├── styles.css            # Global styles
-│   │   ├── components/
-│   │   │   ├── ProtectedRoute.tsx
-│   │   │   ├── DashboardCard.tsx
+│   │   ├── main.tsx               # React entry point, TanStack Router setup
+│   │   ├── styles.css             # Tailwind v4 theme (oklch colors, glass/gradient utilities)
+│   │   ├── lib/
+│   │   │   ├── api.ts             # Backend API helper (fetch, token storage)
+│   │   │   └── utils.ts           # `cn()` class-merging helper
+│   │   ├── components/cryptalks/
+│   │   │   ├── Logo.tsx
+│   │   │   ├── SectionCard.tsx
 │   │   │   └── FeedbackButtons.tsx
-│   │   └── pages/
-│   │       ├── LoginPage.tsx
-│   │       ├── SignupPage.tsx
-│   │       ├── OnboardingPage.tsx
-│   │       └── DashboardPage.tsx
+│   │   └── routes/                # File-based routes (TanStack Router)
+│   │       ├── __root.tsx         # Root layout, not-found/error components
+│   │       ├── index.tsx          # Redirects to /login or /dashboard
+│   │       ├── login.tsx
+│   │       ├── signup.tsx
+│   │       ├── onboarding.tsx     # 4-step wizard (assets, investor type, content, risk)
+│   │       └── dashboard.tsx
+│   ├── index.html
+│   ├── vite.config.ts
 │   ├── package.json
 │   ├── .env.example
 │   └── Dockerfile
