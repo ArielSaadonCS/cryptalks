@@ -11,8 +11,6 @@ small static catalog, deterministically per user per day.
 """
 
 import hashlib
-import threading
-import time
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -24,31 +22,6 @@ from app.models import CachedCoinPrice, CachedPriceHistory, UserPreferences
 
 COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price"
 COINGECKO_TIMEOUT_SECONDS = 5.0
-
-# CoinGecko's free/anonymous tier has a low, undocumented per-minute rate
-# limit. The price endpoint batches every selected asset into one call, but
-# the chart endpoint is per-coin -- a dashboard with several assets selected
-# fires one chart request per coin, and without throttling those land on
-# CoinGecko in a single burst and mostly come back 429. This serializes every
-# outbound CoinGecko call (price and chart) across the whole process to at
-# most one every COINGECKO_MIN_INTERVAL_SECONDS, trading a bit of latency on
-# a fresh cache-miss burst for not getting rate-limited into the fallback
-# path.
-_coingecko_throttle_lock = threading.Lock()
-_coingecko_last_call_at = 0.0
-COINGECKO_MIN_INTERVAL_SECONDS = 3.5
-
-
-def _throttled_coingecko_get(url: str, params: dict[str, object], headers: dict[str, str], timeout: float) -> httpx.Response:
-    global _coingecko_last_call_at
-    with _coingecko_throttle_lock:
-        wait = COINGECKO_MIN_INTERVAL_SECONDS - (time.monotonic() - _coingecko_last_call_at)
-        if wait > 0:
-            time.sleep(wait)
-        try:
-            return httpx.get(url, params=params, headers=headers, timeout=timeout)
-        finally:
-            _coingecko_last_call_at = time.monotonic()
 
 COINGECKO_IDS: dict[str, str] = {
     "BTC": "bitcoin",
@@ -307,7 +280,7 @@ def _fetch_live_prices(symbols: list[str]) -> dict[str, dict[str, object]] | Non
     headers = {"x-cg-demo-api-key": settings.coingecko_api_key} if settings.coingecko_api_key else {}
 
     try:
-        response = _throttled_coingecko_get(COINGECKO_URL, params, headers, COINGECKO_TIMEOUT_SECONDS)
+        response = httpx.get(COINGECKO_URL, params=params, headers=headers, timeout=COINGECKO_TIMEOUT_SECONDS)
         response.raise_for_status()
         data = response.json()
     except Exception as exc:  # network errors, timeouts, bad JSON, non-2xx status, etc.
@@ -430,7 +403,7 @@ def _fetch_live_price_history(symbol: str, period: str) -> list[dict[str, object
     headers = {"x-cg-demo-api-key": settings.coingecko_api_key} if settings.coingecko_api_key else {}
 
     try:
-        response = _throttled_coingecko_get(url, params, headers, CHART_TIMEOUT_SECONDS)
+        response = httpx.get(url, params=params, headers=headers, timeout=CHART_TIMEOUT_SECONDS)
         response.raise_for_status()
         prices = response.json().get("prices") or []
     except Exception as exc:  # network errors, timeouts, bad JSON, non-2xx status, etc.
