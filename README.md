@@ -10,6 +10,22 @@ briefing per user.
 > trading signals, or buy/sell recommendations — anywhere in the product,
 > including AI-generated content.
 
+## Live deployment
+
+- **App:** [cryptalks-beige.vercel.app](https://cryptalks-beige.vercel.app) (Vercel)
+- **API:** [cryptalks-backend.onrender.com](https://cryptalks-backend.onrender.com) — interactive docs at `/docs` (Render, free tier — the first request after a period of inactivity can take 30-50s while it wakes up)
+- **Database:** PostgreSQL on Render. Production intentionally runs with
+  `OPENROUTER_API_KEY` unset (AI Insight uses the deterministic fallback) —
+  the CORS policy is wide open and there's no rate limiting, so a public
+  demo isn't the place to expose a paid, metered API key to anonymous
+  traffic. Every other feature (auth, onboarding, live CoinGecko prices,
+  feedback, content-type gating, etc.) runs exactly as in local dev.
+- **DB access for review:** a read-only Postgres role (`cryptalks_reviewer`,
+  `SELECT`-only on all tables, cannot write or drop anything) has been
+  created for inspection. Its connection string is deliberately **not**
+  included in this public repo — it's provided directly in the assignment
+  submission instead.
+
 ## Features
 
 - Signup and login with JWT authentication and bcrypt password hashing
@@ -354,6 +370,7 @@ cryptalks/
 │   │   └── memes/          # Static meme images served at /memes/*
 │   ├── index.html
 │   ├── vite.config.ts
+│   ├── vercel.json         # SPA rewrite: unmatched paths -> index.html
 │   ├── package.json
 │   ├── .env.example
 │   └── Dockerfile
