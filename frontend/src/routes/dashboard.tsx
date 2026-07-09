@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   ApiError, clearToken, DashboardData, getDashboardToday, getMe, getMyFeedback,
-  getPreferences, getToken, Preferences, SectionType, submitFeedback, Vote,
+  getPreferences, getToken, Preferences, refreshAiInsight, SectionType, submitFeedback, Vote,
 } from "@/lib/api";
 import { Logo } from "@/components/cryptalks/Logo";
 import { SectionCard } from "@/components/cryptalks/SectionCard";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import {
   AlertCircle, Brain, ExternalLink, ImageOff, LineChart, LogOut, Newspaper,
   Radio, Loader2, Smile, Sparkles, TrendingDown, TrendingUp, User as UserIcon,
+  X, ZoomIn,
 } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard")({
@@ -27,6 +28,7 @@ function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [memeFailed, setMemeFailed] = useState(false);
+  const [memeExpanded, setMemeExpanded] = useState(false);
   const [feedback, setFeedback] = useState<Record<string, Vote>>({});
   const [feedbackSubmitting, setFeedbackSubmitting] = useState<Record<string, boolean>>({});
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
@@ -55,6 +57,15 @@ function DashboardPage() {
     return () => { cancelled = true; };
   }, [navigate]);
 
+  useEffect(() => {
+    if (!memeExpanded) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setMemeExpanded(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [memeExpanded]);
+
   async function handleVote(sectionType: SectionType, itemId: string, vote: Vote) {
     const key = feedbackKey(sectionType, itemId);
     setFeedbackError(null);
@@ -62,6 +73,22 @@ function DashboardPage() {
     try {
       await submitFeedback({ sectionType, itemId, vote });
       setFeedback((p) => ({ ...p, [key]: vote }));
+
+      if (vote === "DOWN" && sectionType === "AI_INSIGHT" && dashboard) {
+        // A rejected insight should be replaced, not just marked -- ask the
+        // backend for a new one that explicitly avoids repeating this text.
+        const newInsight = await refreshAiInsight(dashboard.aiInsight.content);
+        setDashboard((prev) => (prev ? { ...prev, aiInsight: newInsight } : prev));
+      }
+
+      if (vote === "DOWN" && sectionType === "COIN_PRICE") {
+        // The backend has already dropped this coin from the user's saved
+        // preferences (see POST /feedback) -- reload both so Market Signals,
+        // Your Interests, and the rest of the briefing reflect it right away.
+        const [newPreferences, newDashboard] = await Promise.all([getPreferences(), getDashboardToday()]);
+        setPreferences(newPreferences);
+        setDashboard(newDashboard);
+      }
     } catch (err) {
       setFeedbackError(err instanceof ApiError ? err.message : "Could not save your feedback.");
     } finally {
@@ -96,9 +123,14 @@ function DashboardPage() {
     );
   }
 
-  const today = new Date().toLocaleDateString(undefined, {
+  const today = new Date().toLocaleDateString("en-US", {
     weekday: "long", month: "long", day: "numeric",
   });
+
+  const showMarketNews = preferences.contentTypes.includes("Market News");
+  const showCharts = preferences.contentTypes.includes("Charts");
+  const showAiInsights = preferences.contentTypes.includes("AI Insights");
+  const showFun = preferences.contentTypes.includes("Fun");
 
   return (
     <div className="min-h-screen">
@@ -115,12 +147,12 @@ function DashboardPage() {
         </header>
 
         {/* Hero */}
-        <section className="mt-8 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+        <section className={cn("mt-8 grid gap-6", showAiInsights && "lg:grid-cols-[1.4fr_1fr]")}>
           <div className="glass relative overflow-hidden rounded-3xl p-6 sm:p-8">
             <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full opacity-40 blur-3xl"
               style={{ background: "var(--gradient-aurora)" }} />
             <div className="relative">
-              <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
+              <p className="font-mono text-sm sm:text-base tracking-[0.1em] text-muted-foreground">
                 {today}
               </p>
               <h1 className="mt-2 text-3xl font-bold sm:text-4xl">
@@ -144,44 +176,47 @@ function DashboardPage() {
           </div>
 
           {/* AI Insight */}
-          <div
-            className="relative overflow-hidden rounded-3xl p-6 sm:p-8"
-            style={{ background: "var(--gradient-aurora)", boxShadow: "var(--shadow-glow)" }}
-          >
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.25),transparent_60%)]" />
-            <div className="relative">
-              <div className="flex items-center gap-2">
-                <div className="grid h-8 w-8 place-items-center rounded-lg bg-white/20 backdrop-blur">
-                  <Brain className="h-4 w-4 text-white" />
+          {showAiInsights && (
+            <div
+              className="relative overflow-hidden rounded-3xl p-6 sm:p-8"
+              style={{ background: "var(--gradient-aurora)", boxShadow: "var(--shadow-glow)" }}
+            >
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.25),transparent_60%)]" />
+              <div className="relative">
+                <div className="flex items-center gap-2">
+                  <div className="grid h-8 w-8 place-items-center rounded-lg bg-white/20 backdrop-blur">
+                    <Brain className="h-4 w-4 text-white" />
+                  </div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/80">
+                    AI Insight of the Day
+                  </p>
+                  <span className={cn(
+                    "ml-auto rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                    dashboard.aiInsight.isFallback ? "bg-white/15 text-white/80" : "bg-white/25 text-white",
+                  )}>
+                    {dashboard.aiInsight.isFallback ? "Fallback" : "Live AI"}
+                  </span>
                 </div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/80">
-                  AI Insight of the Day
+                <h2 className="mt-4 text-xl font-bold text-white sm:text-2xl">
+                  {dashboard.aiInsight.title}
+                </h2>
+                <p className="mt-3 text-sm leading-relaxed text-white/90">
+                  {dashboard.aiInsight.content}
                 </p>
-                <span className={cn(
-                  "ml-auto rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-                  dashboard.aiInsight.isFallback ? "bg-white/15 text-white/80" : "bg-white/25 text-white",
-                )}>
-                  {dashboard.aiInsight.isFallback ? "Fallback" : "Live AI"}
-                </span>
-              </div>
-              <h2 className="mt-4 text-xl font-bold text-white sm:text-2xl">
-                {dashboard.aiInsight.title}
-              </h2>
-              <p className="mt-3 text-sm leading-relaxed text-white/90">
-                {dashboard.aiInsight.content}
-              </p>
-              <div className="mt-4">
-                <FeedbackButtons
-                  sectionType="AI_INSIGHT"
-                  itemId={dashboard.aiInsight.id}
-                  prompt="Was this insight useful?"
-                  vote={feedback[feedbackKey("AI_INSIGHT", dashboard.aiInsight.id)] ?? null}
-                  submitting={!!feedbackSubmitting[feedbackKey("AI_INSIGHT", dashboard.aiInsight.id)]}
-                  onVote={handleVote}
-                />
+                <div className="mt-4">
+                  <FeedbackButtons
+                    sectionType="AI_INSIGHT"
+                    itemId={dashboard.aiInsight.id}
+                    prompt="Was this insight useful?"
+                    vote={feedback[feedbackKey("AI_INSIGHT", dashboard.aiInsight.id)] ?? null}
+                    submitting={!!feedbackSubmitting[feedbackKey("AI_INSIGHT", dashboard.aiInsight.id)]}
+                    onVote={handleVote}
+                    onLightBackground
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </section>
 
         {feedbackError && (
@@ -193,9 +228,9 @@ function DashboardPage() {
         {/* Grid */}
         <section className="mt-6 grid gap-6 lg:grid-cols-3">
           {/* Market news — spans 2 cols */}
+          {showMarketNews && (
           <SectionCard
             title="Personalized News"
-            eyebrow="Curated for you"
             icon={<Newspaper className="h-5 w-5" />}
             accent="cyan"
             className="lg:col-span-2"
@@ -256,8 +291,10 @@ function DashboardPage() {
               </ul>
             )}
           </SectionCard>
+          )}
 
           {/* Coin prices */}
+          {showCharts && (
           <SectionCard
             title="Market Signals"
             eyebrow="24h movement"
@@ -315,11 +352,13 @@ function DashboardPage() {
               </ul>
             )}
           </SectionCard>
+          )}
 
           {/* Meme */}
+          {showFun && (
+          <>
           <SectionCard
             title="Crypto Meme"
-            eyebrow="Because ser, we deserve"
             icon={<Smile className="h-5 w-5" />}
             accent="amber"
             className="lg:col-span-2"
@@ -332,17 +371,26 @@ function DashboardPage() {
                     <span className="text-xs">Image unavailable</span>
                   </div>
                 ) : (
-                  <img
-                    src={dashboard.meme.imageUrl}
-                    alt={dashboard.meme.title}
-                    onError={() => setMemeFailed(true)}
-                    className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setMemeExpanded(true)}
+                    aria-label="View larger meme"
+                    className="group relative h-full w-full cursor-zoom-in"
+                  >
+                    <img
+                      src={dashboard.meme.imageUrl}
+                      alt={dashboard.meme.title}
+                      onError={() => setMemeFailed(true)}
+                      className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
+                    />
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/40 group-hover:opacity-100">
+                      <ZoomIn className="h-6 w-6 text-white" />
+                    </span>
+                  </button>
                 )}
               </div>
               <div className="flex flex-col">
                 <h3 className="text-lg font-semibold">{dashboard.meme.title}</h3>
-                <p className="mt-2 text-sm text-muted-foreground">{dashboard.meme.caption}</p>
                 <span className="mt-3 inline-block w-fit rounded-full bg-amber/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber">
                   Static meme
                 </span>
@@ -359,6 +407,30 @@ function DashboardPage() {
               </div>
             </div>
           </SectionCard>
+
+          {memeExpanded && !memeFailed && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+              onClick={() => setMemeExpanded(false)}
+            >
+              <button
+                type="button"
+                onClick={() => setMemeExpanded(false)}
+                aria-label="Close"
+                className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <img
+                src={dashboard.meme.imageUrl}
+                alt={dashboard.meme.title}
+                onClick={(e) => e.stopPropagation()}
+                className="max-h-[85vh] max-w-full rounded-2xl object-contain shadow-2xl"
+              />
+            </div>
+          )}
+          </>
+          )}
 
           {/* Your interests */}
           <SectionCard

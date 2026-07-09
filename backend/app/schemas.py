@@ -184,6 +184,12 @@ class MemeItem(BaseModel):
     is_fallback: bool = Field(alias="isFallback")
 
 
+class AIInsightRefreshRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    previous_content: str = Field(alias="previousContent")
+
+
 class DashboardResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 

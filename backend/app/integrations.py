@@ -131,54 +131,56 @@ STATIC_NEWS: list[dict[str, object]] = [
     },
 ]
 
+# Served straight from the frontend's static /memes/ folder (frontend/public/memes/),
+# the same way favicon.svg is served -- no external image host, no API.
 MEME_CATALOG: list[dict[str, object]] = [
     {
         "id": "meme-1",
-        "title": "Crypto mood today",
-        "caption": "When BTC moves 2% and everyone becomes an analyst.",
-        "imageUrl": "https://placehold.co/600x350?text=Crypto+Meme",
+        "title": "Taking profits (or not)",
+        "caption": "Me: taking profits. Also me: but it could 10x.",
+        "imageUrl": "/memes/taking-profits.png",
         "source": "static",
     },
     {
         "id": "meme-2",
-        "title": "HODL vibes",
-        "caption": "Checked the portfolio once today. Personal record.",
-        "imageUrl": "https://placehold.co/600x350?text=HODL",
+        "title": "Checking the portfolio",
+        "caption": "Ok, check the price... 911, I'm dying.",
+        "imageUrl": "/memes/checking-the-price.png",
         "source": "static",
     },
     {
         "id": "meme-3",
-        "title": "Market watchers everywhere",
-        "caption": "Green candle, cold coffee, zero regrets.",
-        "imageUrl": "https://placehold.co/600x350?text=Diamond+Hands",
+        "title": "Crypto then vs. now",
+        "caption": "We solved the Byzantine Generals' Problem. Now: \"coin has dog?\"",
+        "imageUrl": "/memes/crypto-then-vs-now.png",
         "source": "static",
     },
     {
         "id": "meme-4",
-        "title": "Chart o'clock",
-        "caption": "Refreshing the price chart is technically cardio.",
-        "imageUrl": "https://placehold.co/600x350?text=Chart+O%27Clock",
+        "title": "Should I sell my Bitcoin?",
+        "caption": "The chart says it all: no, and no — but in red.",
+        "imageUrl": "/memes/should-i-sell-bitcoin.png",
         "source": "static",
     },
     {
         "id": "meme-5",
-        "title": "News cycle speedrun",
-        "caption": "One headline and the whole group chat's mood changes.",
-        "imageUrl": "https://placehold.co/600x350?text=Breaking+News",
+        "title": "This is fine",
+        "caption": "Portfolio down across the board? This is fine.",
+        "imageUrl": "/memes/this-is-fine.png",
         "source": "static",
     },
     {
         "id": "meme-6",
-        "title": "The eternal question",
-        "caption": '"Is this the dip?" — every crypto group chat, always.',
-        "imageUrl": "https://placehold.co/600x350?text=Is+This+The+Dip",
+        "title": "How crypto works",
+        "caption": "It's ok, I'll just HODL and buy more. Two months later...",
+        "imageUrl": "/memes/how-crypto-works.png",
         "source": "static",
     },
     {
         "id": "meme-7",
-        "title": "Patience mode: activated",
-        "caption": "Long-term holders: seen it all, said nothing.",
-        "imageUrl": "https://placehold.co/600x350?text=Patience+Mode",
+        "title": "Diamond hands, exhausted",
+        "caption": "When you invest everything in crypto and just... lie there.",
+        "imageUrl": "/memes/diamond-hands-exhausted.png",
         "source": "static",
     },
 ]
@@ -196,6 +198,21 @@ _RISK_PHRASES = {
     "Medium": "a mix of steady context and notable swings",
     "High": "the kind of volatility that comes with a higher risk tolerance",
 }
+
+# Alternate phrasings the deterministic insight rotates through when asked to
+# avoid repeating a previously-rejected insight (see `_deterministic_insight`'s
+# `variant` param). Same underlying data, different wording/framing.
+_INSIGHT_OPENERS = [
+    "{lead}",
+    "Here's today's read: {lead}",
+    "Quick market pulse: {lead}",
+]
+
+_INSIGHT_CLOSERS = [
+    "For {investor_phrase}, this is the kind of move worth keeping on the radar alongside {risk_phrase}.",
+    "That's a detail {investor_phrase} may want to keep in view, especially with {risk_phrase} in mind.",
+    "Something for {investor_phrase} to note, given {risk_phrase}.",
+]
 
 
 def _fetch_live_prices(symbols: list[str]) -> dict[str, dict[str, object]] | None:
@@ -546,6 +563,7 @@ def _deterministic_insight(
     preferences: UserPreferences,
     coin_prices: list[dict[str, object]],
     market_news: list[dict[str, object]],
+    variant: int = 0,
 ) -> str:
     movers = sorted(coin_prices, key=lambda item: item["change24h"], reverse=True)
 
@@ -562,14 +580,23 @@ def _deterministic_insight(
     else:
         lead = "Markets are holding fairly steady across your selected assets today."
 
+    opener = _INSIGHT_OPENERS[variant % len(_INSIGHT_OPENERS)].format(lead=lead)
+
     news_note = ""
     if market_news:
-        news_note = f' Meanwhile, "{market_news[0]["title"]}" is part of today\'s broader conversation.'
+        # Rotate which headline gets referenced too, not just the framing, so a
+        # regenerated insight can differ in substance when more than one item
+        # is available, not just in wording.
+        headline = market_news[variant % len(market_news)]["title"]
+        news_note = f' Meanwhile, "{headline}" is part of today\'s broader conversation.'
 
     investor_phrase = _INVESTOR_PHRASES.get(preferences.investor_type, "investors like you")
     risk_phrase = _RISK_PHRASES.get(preferences.risk_level, "your selected risk level")
+    closer = _INSIGHT_CLOSERS[variant % len(_INSIGHT_CLOSERS)].format(
+        investor_phrase=investor_phrase, risk_phrase=risk_phrase
+    )
 
-    return f"{lead}{news_note} For {investor_phrase}, this is the kind of move worth keeping on the radar alongside {risk_phrase}."
+    return f"{opener}{news_note} {closer}"
 
 
 def _insight_id(content: str) -> str:
@@ -583,22 +610,57 @@ def _insight_id(content: str) -> str:
     return f"insight-{digest}"
 
 
+MAX_INSIGHT_VARIANTS = 3
+
+
 def generate_ai_insight(
     preferences: UserPreferences,
     coin_prices: list[dict[str, object]],
     market_news: list[dict[str, object]],
     feedback_items: list[dict[str, object]] | None = None,
+    avoid_content: str | None = None,
+    excluded_ids: set[str] | None = None,
 ) -> dict[str, object]:
     """Return the AI Insight of the Day: AI-generated via OpenRouter when a key
     and model are configured and the response passes a basic safety check,
-    otherwise a deterministic fallback insight built from the same context."""
+    otherwise a deterministic fallback insight built from the same context.
+
+    `avoid_content` is the text of an insight the user just gave a thumbs-down
+    to (see `POST /dashboard/ai-insight/refresh`). When set, generation is
+    steered away from repeating it: the live prompt asks explicitly for a
+    different angle, and the deterministic fallback rotates through alternate
+    phrasing/headline variants until it produces something different (rather
+    than deterministically reproducing the exact rejected text, which is what
+    a plain re-call would otherwise do given unchanged market data).
+
+    `excluded_ids` are ids of insights the user has downvoted in the past
+    (same idea as market-news/meme exclusion elsewhere in this module). This
+    guards the plain dashboard load too: without live market movement, the
+    deterministic fallback would otherwise regenerate byte-identical text to
+    something already rejected, even outside the immediate replace flow."""
+    excluded_ids = excluded_ids or set()
+
     if settings.openrouter_api_key and settings.openrouter_model:
         context = _build_ai_context(preferences, coin_prices, market_news, feedback_items)
-        ai_content = _fetch_ai_insight_text(_build_user_prompt(context))
+        user_prompt = _build_user_prompt(context)
+        if avoid_content:
+            user_prompt += (
+                "\n\nThe user gave a thumbs-down to this previous insight and wants something "
+                f'different: "{avoid_content}"\nWrite a new insight with a different angle or '
+                "focus than the one above. Do not repeat similar wording."
+            )
+
+        ai_content = _fetch_ai_insight_text(user_prompt)
 
         if ai_content and _contains_unsafe_wording(ai_content):
             print("[integrations] OpenRouter response failed the safety check, falling back")
             ai_content = None
+
+        if ai_content and avoid_content and ai_content.strip() == avoid_content.strip():
+            ai_content = None  # model echoed the rejected text; fall through to the deterministic path
+
+        if ai_content and _insight_id(ai_content) in excluded_ids:
+            ai_content = None  # matches a previously-downvoted insight; fall through to the deterministic path
 
         if ai_content:
             return {
@@ -609,7 +671,17 @@ def generate_ai_insight(
                 "isFallback": False,
             }
 
+    def _rejected(content: str) -> bool:
+        if avoid_content and content.strip() == avoid_content.strip():
+            return True
+        return _insight_id(content) in excluded_ids
+
     fallback_content = _deterministic_insight(preferences, coin_prices, market_news)
+    for variant in range(1, MAX_INSIGHT_VARIANTS):
+        if not _rejected(fallback_content):
+            break
+        fallback_content = _deterministic_insight(preferences, coin_prices, market_news, variant=variant)
+
     return {
         "id": _insight_id(fallback_content),
         "title": "Your personalized crypto context",

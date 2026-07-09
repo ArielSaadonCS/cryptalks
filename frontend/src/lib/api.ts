@@ -155,3 +155,8 @@ export const getDashboardToday = () => request<DashboardData>("/dashboard/today"
 export const submitFeedback = (data: FeedbackInput) =>
   request<Feedback>("/feedback", { method: "POST", body: JSON.stringify(data) });
 export const getMyFeedback = () => request<Feedback[]>("/feedback/me");
+export const refreshAiInsight = (previousContent: string) =>
+  request<AIInsightItem>("/dashboard/ai-insight/refresh", {
+    method: "POST",
+    body: JSON.stringify({ previousContent }),
+  });
