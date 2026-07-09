@@ -1,10 +1,5 @@
 # Future Model Training Approach
 
-Bonus per the assignment — a proposal only, nothing here is implemented.
-Today's feedback-driven behavior (excluding downvoted items, replacing a
-rejected AI insight, dropping a downvoted coin) is hand-written rules, not
-a trained model. This is how the same data could train one.
-
 ## What's already logged
 
 - `feedback`: `(user_id, section_type, item_id, vote, created_at)` — one row

@@ -35,6 +35,9 @@ insight and light meme into one daily briefing per user.
 - A personalized dashboard built from those preferences on every visit
 - Real coin prices from CoinGecko, with a PostgreSQL cache and a static
   fallback so the dashboard never breaks if CoinGecko is unavailable
+- Market Signals: a historical price chart per coin (1D/1W/1M/1Y/5Y) —
+  see "Price history charts (CoinGecko) — a known limitation" below for a
+  real constraint of CoinGecko's free tier that can affect this section
 - Real market news from CryptoPanic (optional API key), with static fallback
   news when no key is configured or the request fails
 - An AI Insight of the Day from OpenRouter (optional API key + model), with a
@@ -440,6 +443,31 @@ price with a strict priority, independently per asset:
 CoinGecko errors are logged as a backend warning and never raised —
 `GET /dashboard/today` always returns `200`. `COINGECKO_API_KEY` is optional
 (sent as the `x-cg-demo-api-key` header when set).
+
+### Price history charts (CoinGecko) — a known limitation
+
+Market Signals shows a real historical price chart per coin, switchable
+between 1D/1W/1M/1Y/5Y (`GET /dashboard/coin-history`, backed by
+CoinGecko's `market_chart` endpoint and cached per `(symbol, period)` in
+`cached_price_history` with a period-appropriate TTL, same live → cache →
+"unavailable" shape as the rest of the app).
+
+**Known limitation:** unlike the current-price endpoint, which batches every
+selected asset into a single CoinGecko call, `market_chart` is per-coin — one
+request per coin per period. CoinGecko's free/anonymous tier has a low
+per-minute rate limit, so a user with several assets selected can see
+"Chart unavailable" on some coins: the first one or two requests succeed,
+the rest come back `429 Too Many Requests` and correctly fall back rather
+than crash, but the chart itself just isn't there for that coin until the
+next successful fetch. This is an external API constraint, not a bug in the
+app's logic — an in-process request throttle was tried and reverted because
+it didn't reliably fix it (Render's shared free-tier egress and CoinGecko's
+undocumented, low anonymous limit meant it could still be exhausted under
+normal use). The honest fixes are outside this app's control: a free
+CoinGecko "Demo" API key (already supported — set `COINGECKO_API_KEY` and
+it's sent automatically) raises the limit meaningfully, or a paid CoinGecko
+plan removes it. Separately, **5Y is always unavailable** regardless of rate
+limiting — CoinGecko's free tier caps historical range at 365 days.
 
 ### Market news (CryptoPanic)
 
