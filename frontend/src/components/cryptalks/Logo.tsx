@@ -1,3 +1,4 @@
+// The Cryptalks wordmark + icon, used on auth pages and the dashboard header.
 import { Sparkles } from "lucide-react";
 
 export function Logo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {

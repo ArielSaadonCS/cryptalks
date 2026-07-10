@@ -1,3 +1,5 @@
+// Landing route: redirects to /login, /onboarding, or /dashboard based on
+// auth + onboarding status.
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { getMe, getToken } from "@/lib/api";

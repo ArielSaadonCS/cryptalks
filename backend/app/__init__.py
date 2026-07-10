@@ -1,0 +1,1 @@
+"""Cryptalks backend application package."""

@@ -1,3 +1,5 @@
+// Shared card shell (icon, title, eyebrow, accent glow) wrapping every
+// dashboard section.
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 

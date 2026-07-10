@@ -1,3 +1,6 @@
+// The main dashboard: Market Signals (with charts), Market News, AI
+// Insight, and Crypto Meme, each gated by the user's content-type
+// preferences, plus feedback voting on every item.
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {

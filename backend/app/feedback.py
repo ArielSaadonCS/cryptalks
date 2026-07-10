@@ -1,3 +1,8 @@
+"""Thumbs up/down voting: upserts a vote per (user, section, item), and
+for a downvoted coin price, removes that asset from the user's
+preferences.
+"""
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 

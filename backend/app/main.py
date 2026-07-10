@@ -1,3 +1,7 @@
+"""FastAPI app setup: CORS, router registration, and the auth endpoints
+(signup, login, me).
+"""
+
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session

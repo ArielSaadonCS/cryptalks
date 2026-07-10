@@ -1,3 +1,5 @@
+// Root layout: no shared chrome, just the route outlet plus the shared
+// 404/error screens.
 import { Outlet, createRootRoute, Link, useRouter } from "@tanstack/react-router";
 
 function NotFoundComponent() {

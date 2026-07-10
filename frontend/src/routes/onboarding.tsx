@@ -1,3 +1,6 @@
+// 4-step onboarding quiz (assets, investor type, content types, risk
+// level). Also doubles as the Settings edit flow when revisited after
+// completion.
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, getMe, getPreferences, getToken, savePreferences } from "@/lib/api";

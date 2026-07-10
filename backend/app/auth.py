@@ -1,3 +1,7 @@
+"""Password hashing, JWT issuing/validation, and the get_current_user
+dependency that protects every authenticated route.
+"""
+
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, status

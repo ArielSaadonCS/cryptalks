@@ -1,3 +1,7 @@
+"""Typed app settings loaded from environment variables (and a local
+.env file when running outside Docker).
+"""
+
 from pydantic_settings import BaseSettings
 
 

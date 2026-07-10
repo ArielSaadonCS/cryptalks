@@ -1,3 +1,7 @@
+"""Onboarding preferences: read and upsert a user's assets, investor
+type, content types, and risk level.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 

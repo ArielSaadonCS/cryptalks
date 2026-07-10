@@ -1,3 +1,7 @@
+"""SQLAlchemy models: users, onboarding preferences, feedback votes, and
+cached price/price-history data.
+"""
+
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, UniqueConstraint

@@ -1,3 +1,5 @@
+// Login page, plus the shared AuthShell layout and Field input (with
+// password show/hide) reused by both login and signup.
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { FormEvent, useState } from "react";
 import { ApiError, getMe, login, setToken } from "@/lib/api";

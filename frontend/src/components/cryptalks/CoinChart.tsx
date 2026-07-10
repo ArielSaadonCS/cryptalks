@@ -1,3 +1,5 @@
+// Historical price line chart for one coin/period, with loading and
+// "unavailable" states.
 import { useEffect, useState } from "react";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { getCoinHistory, HistoryPeriod, PriceHistoryPoint } from "@/lib/api";

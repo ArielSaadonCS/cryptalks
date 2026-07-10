@@ -1,3 +1,7 @@
+"""Pydantic request/response schemas, including password and preference
+validation rules.
+"""
+
 import re
 from datetime import datetime
 

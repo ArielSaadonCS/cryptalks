@@ -1,3 +1,8 @@
+"""Composes the daily dashboard: fetches each section from
+integrations.py and exposes the AI insight refresh and coin history
+endpoints. Stays thin -- no external API calls happen here directly.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 

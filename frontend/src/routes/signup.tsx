@@ -1,3 +1,4 @@
+// Signup page, reusing AuthShell/Field from login.tsx.
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { FormEvent, useState } from "react";
 import { ApiError, setToken, signup } from "@/lib/api";

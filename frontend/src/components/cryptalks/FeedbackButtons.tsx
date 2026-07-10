@@ -1,3 +1,4 @@
+// Thumbs up/down voting control used on every dashboard item.
 import { ThumbsUp, ThumbsDown, Check } from "lucide-react";
 import type { SectionType, Vote } from "@/lib/api";
 import { cn } from "@/lib/utils";
